@@ -745,7 +745,13 @@ export type Database = {
           created_at: string
           description: string | null
           due_date: string | null
+          enabled_views: string[] | null
           id: string
+          is_focus_list: boolean | null
+          is_frog: boolean | null
+          is_important: boolean | null
+          is_urgent: boolean | null
+          ivy_lee_order: number | null
           priority: Database["public"]["Enums"]["priority_level"]
           status: Database["public"]["Enums"]["task_status"]
           title: string
@@ -757,7 +763,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          enabled_views?: string[] | null
           id?: string
+          is_focus_list?: boolean | null
+          is_frog?: boolean | null
+          is_important?: boolean | null
+          is_urgent?: boolean | null
+          ivy_lee_order?: number | null
           priority?: Database["public"]["Enums"]["priority_level"]
           status?: Database["public"]["Enums"]["task_status"]
           title: string
@@ -769,7 +781,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          enabled_views?: string[] | null
           id?: string
+          is_focus_list?: boolean | null
+          is_frog?: boolean | null
+          is_important?: boolean | null
+          is_urgent?: boolean | null
+          ivy_lee_order?: number | null
           priority?: Database["public"]["Enums"]["priority_level"]
           status?: Database["public"]["Enums"]["task_status"]
           title?: string

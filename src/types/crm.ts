@@ -13,6 +13,9 @@ export type OnboardingStatus = 'pending' | 'in_progress' | 'completed';
 export type FinancialStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 export type TransactionType = 'income' | 'expense';
 
+// Task Views for productivity strategies
+export type TaskViewType = 'list' | 'eisenhower' | 'kanban' | 'two_lists' | 'eat_frog' | 'ivy_lee';
+
 // ============================================
 // INTERFACES
 // ============================================
@@ -58,6 +61,13 @@ export interface Task {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  // Productivity strategy fields
+  is_important: boolean;
+  is_urgent: boolean;
+  is_frog: boolean;
+  ivy_lee_order: number | null;
+  is_focus_list: boolean;
+  enabled_views: TaskViewType[];
   client?: Pick<Client, 'id' | 'name'> | null;
 }
 
@@ -257,6 +267,12 @@ export interface TaskFormData {
   client_id?: string;
   priority: PriorityLevel;
   due_date?: string;
+  is_important?: boolean;
+  is_urgent?: boolean;
+  is_frog?: boolean;
+  ivy_lee_order?: number;
+  is_focus_list?: boolean;
+  enabled_views?: TaskViewType[];
 }
 
 export interface LeadFormData {
@@ -312,3 +328,16 @@ export interface DashboardStats {
   processesInProgress: number;
   onboardingsInProgress: number;
 }
+
+// ============================================
+// PRODUCTIVITY VIEW LABELS
+// ============================================
+
+export const taskViewLabels: Record<TaskViewType, { label: string; icon: string; description: string }> = {
+  list: { label: 'Lista', icon: '📋', description: 'Visualização em lista simples' },
+  eisenhower: { label: 'Matriz de Eisenhower', icon: '🎯', description: 'Urgente x Importante' },
+  kanban: { label: 'Kanban', icon: '📊', description: 'Por status em colunas' },
+  two_lists: { label: 'Duas Listas', icon: '📋', description: 'Foco x Backlog' },
+  eat_frog: { label: 'Coma o Sapo', icon: '🐸', description: 'Tarefa mais difícil primeiro' },
+  ivy_lee: { label: 'Ivy Lee', icon: '6️⃣', description: '6 tarefas prioritárias do dia' },
+};
