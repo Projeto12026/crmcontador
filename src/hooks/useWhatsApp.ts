@@ -110,8 +110,15 @@ export function useTestWhatsAppConnection() {
       if (data.success) {
         toast({
           title: 'Conexão OK',
-          description: 'WhatsApp conectado com sucesso!',
+          description: data.message || 'WhatsApp conectado com sucesso!',
         });
+        if (data.warning) {
+          toast({
+            title: 'Aviso',
+            description: data.warning,
+            variant: 'default',
+          });
+        }
       } else {
         toast({
           title: 'Falha na conexão',
@@ -120,10 +127,10 @@ export function useTestWhatsAppConnection() {
         });
       }
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: 'Erro',
-        description: 'Erro ao testar conexão',
+        description: error.message || 'Erro ao testar conexão',
         variant: 'destructive',
       });
     },
