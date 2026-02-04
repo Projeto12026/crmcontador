@@ -1,7 +1,7 @@
-import { useState, useEffect, forwardRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useEmpresas } from '@/hooks/useEmpresas';
 import { supabase } from '@/integrations/supabase/client';
-import { Empresa, BoletoStep, ProcessBoletoResult } from '@/types/empresa';
+import { BoletoStep, ProcessBoletoResult } from '@/types/empresa';
 import { BoletoResult } from './BoletoResult';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +39,7 @@ const INITIAL_STEPS: BoletoStep[] = [
   { id: 'send_pdf', label: 'Enviando PDF via WhatsApp', status: 'pending' },
 ];
 
-export const SendBoletoModal = forwardRef<HTMLDivElement, SendBoletoModalProps>(function SendBoletoModal({ open, onOpenChange }, ref) {
+export function SendBoletoModal({ open, onOpenChange }: SendBoletoModalProps) {
   const { data: empresas, isLoading: loadingEmpresas } = useEmpresas();
   const { toast } = useToast();
 
@@ -299,4 +299,4 @@ export const SendBoletoModal = forwardRef<HTMLDivElement, SendBoletoModalProps>(
       </DialogContent>
     </Dialog>
   );
-});
+}
