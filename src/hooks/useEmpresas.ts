@@ -59,6 +59,11 @@ export function useEmpresaStats() {
         pending: data.filter(e => e.status === 'PENDING').length,
         overdue: data.filter(e => e.status === 'OVERDUE').length,
         unknown: data.filter(e => e.status === 'UNKNOWN').length,
+        open: data.filter(e => e.status === 'OPEN').length,
+        late: data.filter(e => e.status === 'LATE').length,
+        paid: data.filter(e => e.status === 'PAID').length,
+        cancelled: data.filter(e => e.status === 'CANCELLED').length,
+        erro_consulta: data.filter(e => e.status === 'ERRO_CONSULTA').length,
       };
       
       return stats;

@@ -196,8 +196,18 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      empresa_status: "UNKNOWN" | "ACTIVE" | "INACTIVE" | "PENDING" | "OVERDUE"
-      forma_envio: "EMAIL" | "WHATSAPP" | "CORA"
+      empresa_status:
+        | "UNKNOWN"
+        | "ACTIVE"
+        | "INACTIVE"
+        | "PENDING"
+        | "OVERDUE"
+        | "OPEN"
+        | "LATE"
+        | "PAID"
+        | "CANCELLED"
+        | "ERRO_CONSULTA"
+      forma_envio: "EMAIL" | "WHATSAPP" | "CORA" | "NELSON"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -325,8 +335,19 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      empresa_status: ["UNKNOWN", "ACTIVE", "INACTIVE", "PENDING", "OVERDUE"],
-      forma_envio: ["EMAIL", "WHATSAPP", "CORA"],
+      empresa_status: [
+        "UNKNOWN",
+        "ACTIVE",
+        "INACTIVE",
+        "PENDING",
+        "OVERDUE",
+        "OPEN",
+        "LATE",
+        "PAID",
+        "CANCELLED",
+        "ERRO_CONSULTA",
+      ],
+      forma_envio: ["EMAIL", "WHATSAPP", "CORA", "NELSON"],
     },
   },
 } as const
