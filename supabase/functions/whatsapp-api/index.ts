@@ -117,14 +117,92 @@ async function sendDocument(token: string, apiUrl: string, phone: string, base64
 }
 
 async function testConnection(token: string, apiUrl: string) {
-  // Try to make a simple request to verify the connection
-  const url = `${apiUrl}/api/status/${token}`;
+  // Test connection by checking if the API is reachable and token is valid
   
   try {
-    const response = await fetch(url, { method: 'GET' });
-    return { success: response.ok, status: response.status };
+    // First, check if URL is valid
+    const parsedUrl = new URL(apiUrl);
+    console.log('Testing connection to:', parsedUrl.origin);
+    
+    // Test the token by making a request to send-text endpoint
+    // The API will validate the token and return appropriate error
+    const testUrl = `${apiUrl}/api/enviar-texto/${token}`;
+    const testResponse = await fetch(testUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '5511999999999', message: 'test' }),
+      signal: AbortSignal.timeout(15000)
+    });
+    
+    let testResult;
+    try {
+      testResult = await testResponse.json();
+    } catch {
+      testResult = await testResponse.text();
+    }
+    
+    console.log('Token test response:', testResponse.status, JSON.stringify(testResult));
+    
+    // Check the API response for token validation
+    if (typeof testResult === 'object' && testResult !== null) {
+      // Wascript API returns {"success":false,"message":"Token não cadastrado"} for invalid tokens
+      if (testResult.message?.toLowerCase().includes('token não cadastrado') ||
+          testResult.message?.toLowerCase().includes('token invalido') ||
+          testResult.message?.toLowerCase().includes('token inválido')) {
+        return { 
+          success: false, 
+          error: 'Token não cadastrado ou inválido. Verifique seu token na plataforma Wascript.',
+          status: testResponse.status
+        };
+      }
+      
+      // Check if response indicates success or valid token
+      if (testResult.success === true || testResponse.status === 200) {
+        return { 
+          success: true, 
+          message: 'Conexão estabelecida e token válido!',
+          status: testResponse.status
+        };
+      }
+      
+      // For any other response, check if it's a non-authentication error
+      if (testResponse.status === 401 || testResponse.status === 403) {
+        return { 
+          success: false, 
+          error: 'Token inválido ou sem permissão',
+          status: testResponse.status
+        };
+      }
+      
+      // If API responded (even with error), connection works but might have other issues
+      return { 
+        success: true, 
+        message: 'Conexão estabelecida. Verifique se o token está ativo.',
+        warning: testResult.message || 'Resposta inesperada da API',
+        status: testResponse.status
+      };
+    }
+    
+    return { 
+      success: true, 
+      message: 'Conexão estabelecida',
+      status: testResponse.status
+    };
   } catch (err: unknown) {
+    console.error('Connection test error:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
+    
+    // Check for specific error types
+    if (message.includes('timeout') || message.includes('TimeoutError')) {
+      return { success: false, error: 'Timeout - API não respondeu em 15 segundos' };
+    }
+    if (message.includes('NetworkError') || message.includes('Failed to fetch')) {
+      return { success: false, error: 'Erro de rede - verifique a URL da API' };
+    }
+    if (message.includes('Invalid URL')) {
+      return { success: false, error: 'URL inválida - verifique o formato da URL' };
+    }
+    
     return { success: false, error: message };
   }
 }
