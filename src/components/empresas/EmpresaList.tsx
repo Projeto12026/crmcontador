@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useEmpresas, useDeleteEmpresa, useCreateEmpresa, useUpdateEmpresa } from '@/hooks/useEmpresas';
+import { useSyncStatus, useSyncAllStatus } from '@/hooks/useStatusSync';
 import { Empresa, EmpresaStatus } from '@/types/empresa';
 import { EmpresaFormData, formatCNPJ } from '@/lib/validators';
 import { EmpresaForm } from './EmpresaForm';
+import { EmpresaStats } from './EmpresaStats';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -30,14 +34,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Pencil, Trash2, Plus, Building2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Pencil, Trash2, Plus, Building2, RefreshCw, Loader2 } from 'lucide-react';
 
 const statusColors: Record<EmpresaStatus, string> = {
   UNKNOWN: 'bg-muted text-muted-foreground',
-  ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100',
-  INACTIVE: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100',
+  ACTIVE: 'bg-primary/10 text-primary',
+  INACTIVE: 'bg-muted text-muted-foreground',
   PENDING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100',
-  OVERDUE: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
+  OVERDUE: 'bg-destructive/10 text-destructive',
+  OPEN: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
+  LATE: 'bg-destructive/10 text-destructive',
+  PAID: 'bg-primary/10 text-primary',
+  CANCELLED: 'bg-muted text-muted-foreground',
+  ERRO_CONSULTA: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100',
 };
 
 const statusLabels: Record<EmpresaStatus, string> = {
@@ -46,12 +62,18 @@ const statusLabels: Record<EmpresaStatus, string> = {
   INACTIVE: 'Inativo',
   PENDING: 'Pendente',
   OVERDUE: 'Vencido',
+  OPEN: 'Aberto',
+  LATE: 'Atrasado',
+  PAID: 'Pago',
+  CANCELLED: 'Cancelado',
+  ERRO_CONSULTA: 'Erro Consulta',
 };
 
 const formaEnvioLabels: Record<string, string> = {
   EMAIL: 'E-mail',
   WHATSAPP: 'WhatsApp',
   CORA: 'Cora',
+  NELSON: 'Nelson',
 };
 
 export function EmpresaList() {
@@ -60,11 +82,16 @@ export function EmpresaList() {
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [empresaToDelete, setEmpresaToDelete] = useState<Empresa | null>(null);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncCompetencia, setSyncCompetencia] = useState('');
+  const [syncingEmpresaId, setSyncingEmpresaId] = useState<string | null>(null);
 
   const { data: empresas, isLoading } = useEmpresas(statusFilter);
   const createMutation = useCreateEmpresa();
   const updateMutation = useUpdateEmpresa();
   const deleteMutation = useDeleteEmpresa();
+  const syncMutation = useSyncStatus();
+  const syncAllMutation = useSyncAllStatus();
 
   const handleCreate = () => {
     setEditingEmpresa(null);
@@ -97,6 +124,29 @@ export function EmpresaList() {
     }
   };
 
+  const handleSyncSingle = async (empresa: Empresa) => {
+    const now = new Date();
+    const competencia = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    
+    setSyncingEmpresaId(empresa.id);
+    try {
+      await syncMutation.mutateAsync({
+        empresaId: empresa.id,
+        cnpj: empresa.cnpj,
+        competencia,
+      });
+    } finally {
+      setSyncingEmpresaId(null);
+    }
+  };
+
+  const handleSyncAll = async () => {
+    if (!syncCompetencia || !/^\d{2}\/\d{4}$/.test(syncCompetencia)) return;
+    
+    await syncAllMutation.mutateAsync({ competencia: syncCompetencia });
+    setSyncDialogOpen(false);
+  };
+
   const formatAmount = (amount: number | null) => {
     if (amount === null) return '-';
     return new Intl.NumberFormat('pt-BR', {
@@ -105,12 +155,22 @@ export function EmpresaList() {
     }).format(amount);
   };
 
+  const handleCompetenciaChange = (value: string) => {
+    let formatted = value.replace(/\D/g, '');
+    if (formatted.length > 2) {
+      formatted = formatted.slice(0, 2) + '/' + formatted.slice(2, 6);
+    }
+    setSyncCompetencia(formatted);
+  };
+
   return (
     <div className="space-y-6">
+      <EmpresaStats />
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-2">
           <Building2 className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">Empresas</h1>
+          <h2 className="text-xl font-bold">Lista de Empresas</h2>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -123,6 +183,11 @@ export function EmpresaList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos</SelectItem>
+              <SelectItem value="OPEN">Abertos</SelectItem>
+              <SelectItem value="LATE">Atrasados</SelectItem>
+              <SelectItem value="PAID">Pagos</SelectItem>
+              <SelectItem value="CANCELLED">Cancelados</SelectItem>
+              <SelectItem value="ERRO_CONSULTA">Erro Consulta</SelectItem>
               <SelectItem value="ACTIVE">Ativos</SelectItem>
               <SelectItem value="INACTIVE">Inativos</SelectItem>
               <SelectItem value="PENDING">Pendentes</SelectItem>
@@ -130,6 +195,11 @@ export function EmpresaList() {
               <SelectItem value="UNKNOWN">Desconhecidos</SelectItem>
             </SelectContent>
           </Select>
+
+          <Button variant="outline" onClick={() => setSyncDialogOpen(true)}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Sincronizar Todos
+          </Button>
           
           <Button onClick={handleCreate} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -138,7 +208,7 @@ export function EmpresaList() {
         </div>
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-md border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -156,7 +226,7 @@ export function EmpresaList() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-8">
-                  Carregando...
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                 </TableCell>
               </TableRow>
             ) : empresas?.length === 0 ? (
@@ -176,7 +246,7 @@ export function EmpresaList() {
                   <TableCell>{empresa.telefone || '-'}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {formaEnvioLabels[empresa.forma_envio]}
+                      {formaEnvioLabels[empresa.forma_envio] || empresa.forma_envio}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -186,7 +256,20 @@ export function EmpresaList() {
                   </TableCell>
                   <TableCell>{formatAmount(empresa.amount)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSyncSingle(empresa)}
+                        disabled={syncingEmpresaId === empresa.id}
+                        title="Sincronizar status"
+                      >
+                        {syncingEmpresaId === empresa.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -238,6 +321,50 @@ export function EmpresaList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Sincronizar Status de Todas as Empresas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="sync-competencia">Competência</Label>
+              <Input
+                id="sync-competencia"
+                value={syncCompetencia}
+                onChange={(e) => handleCompetenciaChange(e.target.value)}
+                placeholder="MM/AAAA"
+                maxLength={7}
+              />
+              <p className="text-sm text-muted-foreground">
+                Informe a competência para buscar o status dos boletos na Cora
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSyncAll}
+              disabled={!syncCompetencia || !/^\d{2}\/\d{4}$/.test(syncCompetencia) || syncAllMutation.isPending}
+            >
+              {syncAllMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sincronizar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

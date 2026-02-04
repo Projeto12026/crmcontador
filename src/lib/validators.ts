@@ -2,15 +2,11 @@ import { z } from 'zod';
 
 // Validação de CNPJ
 export function validateCNPJ(cnpj: string): boolean {
-  // Remove caracteres não numéricos
   const cleaned = cnpj.replace(/\D/g, '');
   
   if (cleaned.length !== 14) return false;
-  
-  // Verifica se todos os dígitos são iguais
   if (/^(\d)\1+$/.test(cleaned)) return false;
   
-  // Validação dos dígitos verificadores
   let sum = 0;
   let weight = 5;
   
@@ -47,6 +43,36 @@ export function formatCNPJ(cnpj: string): string {
   );
 }
 
+// Formata telefone com DDI 55 (13 dígitos)
+export function formatPhone(phone: string): string {
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // Add Brazil country code if not present
+  if (cleaned.length === 11) {
+    cleaned = '55' + cleaned;
+  } else if (cleaned.length === 10) {
+    cleaned = '55' + cleaned;
+  }
+  
+  return cleaned;
+}
+
+// Valida telefone (mínimo 10 dígitos, ideal 13 com DDI)
+export function validatePhone(phone: string): boolean {
+  const cleaned = phone.replace(/\D/g, '');
+  return cleaned.length >= 10 && cleaned.length <= 15;
+}
+
+// Formata competência para exibição
+export function formatCompetencia(competencia: string): string {
+  const [month, year] = competencia.split('/');
+  const months = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  return `${months[parseInt(month) - 1]}/${year}`;
+}
+
 // Schema de validação para empresa
 export const empresaSchema = z.object({
   nome: z.string().trim().min(1, 'Nome é obrigatório').max(200, 'Nome muito longo'),
@@ -56,8 +82,16 @@ export const empresaSchema = z.object({
     .refine(val => val.length === 14, 'CNPJ deve ter 14 dígitos')
     .refine(validateCNPJ, 'CNPJ inválido'),
   dia_vencimento: z.number().min(1).max(31).optional().nullable(),
-  forma_envio: z.enum(['EMAIL', 'WHATSAPP', 'CORA']).default('EMAIL'),
+  forma_envio: z.enum(['EMAIL', 'WHATSAPP', 'CORA', 'NELSON']).default('EMAIL'),
   telefone: z.string().trim().max(20, 'Telefone muito longo').optional().nullable(),
 });
 
 export type EmpresaFormData = z.infer<typeof empresaSchema>;
+
+// Schema para validar competência
+export const competenciaSchema = z.string()
+  .regex(/^\d{2}\/\d{4}$/, 'Formato inválido. Use MM/AAAA')
+  .refine((val) => {
+    const [month, year] = val.split('/').map(Number);
+    return month >= 1 && month <= 12 && year >= 2020 && year <= 2030;
+  }, 'Mês ou ano inválido');

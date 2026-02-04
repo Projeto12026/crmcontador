@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.process-boleto]
 verify_jwt = false
+
+[functions.sync-status]
+verify_jwt = false

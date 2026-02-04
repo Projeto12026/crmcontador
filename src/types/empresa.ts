@@ -1,5 +1,5 @@
-export type FormaEnvio = 'EMAIL' | 'WHATSAPP' | 'CORA';
-export type EmpresaStatus = 'UNKNOWN' | 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'OVERDUE';
+export type FormaEnvio = 'EMAIL' | 'WHATSAPP' | 'CORA' | 'NELSON';
+export type EmpresaStatus = 'UNKNOWN' | 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'OVERDUE' | 'OPEN' | 'LATE' | 'PAID' | 'CANCELLED' | 'ERRO_CONSULTA';
 
 export interface Empresa {
   id: string;
@@ -20,9 +20,48 @@ export interface Empresa {
 
 export interface EmpresaStats {
   total: number;
+  open: number;
+  late: number;
+  paid: number;
+  cancelled: number;
+  erro_consulta: number;
+  unknown: number;
   active: number;
   inactive: number;
   pending: number;
   overdue: number;
-  unknown: number;
+}
+
+export interface ProcessBoletoPayload {
+  empresa: {
+    nome: string;
+    cnpj: string;
+    telefone: string;
+    apelido?: string;
+  };
+  competencia: string; // "MM/AAAA"
+  invoiceId?: string;
+}
+
+export interface ProcessBoletoResult {
+  success: boolean;
+  invoiceId?: string;
+  message?: string;
+  error?: string;
+  step?: string;
+  details?: {
+    empresa: string;
+    competencia: string;
+    valor: string;
+    vencimento: string;
+    isLate: boolean;
+    daysOverdue: number;
+  };
+}
+
+export interface BoletoStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'loading' | 'success' | 'error';
+  error?: string;
 }
