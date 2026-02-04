@@ -192,111 +192,113 @@ export function SendBoletoModal({ open, onOpenChange }: SendBoletoModalProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Send className="h-5 w-5" />
-            Enviar Boleto
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              Enviar Boleto
+            </DialogTitle>
+          </DialogHeader>
 
-        {!showProgress ? (
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="empresa">Empresa</Label>
-              <Select
-                value={selectedEmpresaId}
-                onValueChange={setSelectedEmpresaId}
-                disabled={loadingEmpresas}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {empresas?.map((empresa) => (
-                    <SelectItem key={empresa.id} value={empresa.id}>
-                      {empresa.apelido || empresa.nome}
-                      {!empresa.telefone && ' (sem telefone)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedEmpresa && (
-              <div className="text-sm text-muted-foreground space-y-1 bg-muted p-3 rounded-lg">
-                <p><strong>Nome:</strong> {selectedEmpresa.nome}</p>
-                <p><strong>CNPJ:</strong> {selectedEmpresa.cnpj}</p>
-                <p><strong>Telefone:</strong> {selectedEmpresa.telefone || 'Não cadastrado'}</p>
+          {!showProgress ? (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="empresa">Empresa</Label>
+                <Select
+                  value={selectedEmpresaId}
+                  onValueChange={setSelectedEmpresaId}
+                  disabled={loadingEmpresas}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresas?.map((empresa) => (
+                      <SelectItem key={empresa.id} value={empresa.id}>
+                        {empresa.apelido || empresa.nome}
+                        {!empresa.telefone && ' (sem telefone)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="competencia">Competência *</Label>
-              <Input
-                id="competencia"
-                value={competencia}
-                onChange={(e) => handleCompetenciaChange(e.target.value)}
-                placeholder="MM/AAAA"
-                maxLength={7}
-              />
-              {competenciaError && (
-                <p className="text-sm text-destructive">{competenciaError}</p>
+              {selectedEmpresa && (
+                <div className="text-sm text-muted-foreground space-y-1 bg-muted p-3 rounded-lg">
+                  <p><strong>Nome:</strong> {selectedEmpresa.nome}</p>
+                  <p><strong>CNPJ:</strong> {selectedEmpresa.cnpj}</p>
+                  <p><strong>Telefone:</strong> {selectedEmpresa.telefone || 'Não cadastrado'}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="competencia">Competência *</Label>
+                <Input
+                  id="competencia"
+                  value={competencia}
+                  onChange={(e) => handleCompetenciaChange(e.target.value)}
+                  placeholder="MM/AAAA"
+                  maxLength={7}
+                />
+                {competenciaError && (
+                  <p className="text-sm text-destructive">{competenciaError}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="invoiceId">ID do Boleto (opcional)</Label>
+                <Input
+                  id="invoiceId"
+                  value={invoiceId}
+                  onChange={(e) => setInvoiceId(e.target.value)}
+                  placeholder="Deixe em branco para buscar automaticamente"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={handleClose}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSend}
+                  disabled={!selectedEmpresaId || !competencia || competenciaError !== '' || isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Enviar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-4 space-y-4">
+              <BoletoResult steps={steps} result={result} />
+              
+              {!isProcessing && (
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={handleClose}>
+                    Fechar
+                  </Button>
+                  {result?.success === false && (
+                    <Button onClick={() => setShowProgress(false)}>
+                      Tentar Novamente
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="invoiceId">ID do Boleto (opcional)</Label>
-              <Input
-                id="invoiceId"
-                value={invoiceId}
-                onChange={(e) => setInvoiceId(e.target.value)}
-                placeholder="Deixe em branco para buscar automaticamente"
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end pt-4">
-              <Button variant="outline" onClick={handleClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSend}
-                disabled={!selectedEmpresaId || !competencia || competenciaError !== '' || isProcessing}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    Enviar
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="py-4 space-y-4">
-            <BoletoResult steps={steps} result={result} />
-            
-            {!isProcessing && (
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={handleClose}>
-                  Fechar
-                </Button>
-                {result?.success === false && (
-                  <Button onClick={() => setShowProgress(false)}>
-                    Tentar Novamente
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
