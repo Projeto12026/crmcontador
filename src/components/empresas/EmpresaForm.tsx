@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { empresaSchema, EmpresaFormData, formatCNPJ } from '@/lib/validators';
@@ -28,13 +29,13 @@ interface EmpresaFormProps {
   isLoading?: boolean;
 }
 
-export function EmpresaForm({
+export const EmpresaForm = forwardRef<HTMLDivElement, EmpresaFormProps>(function EmpresaForm({
   open,
   onOpenChange,
   empresa,
   onSubmit,
   isLoading,
-}: EmpresaFormProps) {
+}, ref) {
   const {
     register,
     handleSubmit,
@@ -171,4 +172,4 @@ export function EmpresaForm({
       </DialogContent>
     </Dialog>
   );
-}
+});
