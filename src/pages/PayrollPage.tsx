@@ -53,31 +53,44 @@ const statusConfig: Record<PayrollObligationStatus, { label: string; variant: 'd
   completed: { label: 'Concluída', variant: 'default', icon: <CheckCircle2 className="h-3 w-3" /> },
 };
 
-// Helper function to get previous month competence in MM/YYYY format
+// Month abbreviations used in the database (Portuguese)
+const MONTH_ABBR = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+// Helper function to get previous month competence in MMM/YYYY format (e.g., "JAN/2025")
 function getPreviousMonthCompetence(): string {
   const now = new Date();
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const month = String(prevMonth.getMonth() + 1).padStart(2, '0');
+  const monthAbbr = MONTH_ABBR[prevMonth.getMonth()];
   const year = prevMonth.getFullYear();
-  return `${month}/${year}`;
+  return `${monthAbbr}/${year}`;
 }
 
-// Helper function to format competence for display
+// Helper function to format competence for display (e.g., "JAN/2025" -> "Janeiro 2025")
 function formatCompetenceLabel(competence: string): string {
-  const months = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-  ];
-  
   const parts = competence.split('/');
   if (parts.length === 2) {
-    const monthIndex = parseInt(parts[0], 10) - 1;
+    const monthAbbr = parts[0].toUpperCase();
     const year = parts[1];
-    if (monthIndex >= 0 && monthIndex < 12) {
-      return `${months[monthIndex]} ${year}`;
+    const monthIndex = MONTH_ABBR.indexOf(monthAbbr);
+    if (monthIndex >= 0) {
+      return `${MONTH_NAMES[monthIndex]} ${year}`;
     }
   }
   return competence;
+}
+
+// Helper function to sort competences chronologically (most recent first)
+function sortCompetences(competences: string[]): string[] {
+  return competences.sort((a, b) => {
+    const [monthA, yearA] = a.split('/');
+    const [monthB, yearB] = b.split('/');
+    const idxA = MONTH_ABBR.indexOf(monthA.toUpperCase());
+    const idxB = MONTH_ABBR.indexOf(monthB.toUpperCase());
+    const dateA = parseInt(yearA) * 12 + idxA;
+    const dateB = parseInt(yearB) * 12 + idxB;
+    return dateB - dateA; // Most recent first
+  });
 }
 
 export function PayrollPage() {
@@ -103,7 +116,7 @@ export function PayrollPage() {
   // Get unique competences and departments for filters
   const competences = useMemo(() => {
     const unique = [...new Set(obligations.map(o => o.competence))];
-    return unique.sort().reverse();
+    return sortCompetences(unique);
   }, [obligations]);
 
   // Update filter to match available competence if default not found
