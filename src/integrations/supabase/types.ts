@@ -250,10 +250,12 @@ export type Database = {
           description: string | null
           end_date: string | null
           id: string
+          manager: string | null
           monthly_value: number | null
           notes: string | null
           start_date: string | null
           status: Database["public"]["Enums"]["contract_status"]
+          tax_type: string | null
           title: string
           updated_at: string
         }
@@ -264,10 +266,12 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           id?: string
+          manager?: string | null
           monthly_value?: number | null
           notes?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["contract_status"]
+          tax_type?: string | null
           title: string
           updated_at?: string
         }
@@ -278,10 +282,12 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           id?: string
+          manager?: string | null
           monthly_value?: number | null
           notes?: string | null
           start_date?: string | null
           status?: Database["public"]["Enums"]["contract_status"]
+          tax_type?: string | null
           title?: string
           updated_at?: string
         }
