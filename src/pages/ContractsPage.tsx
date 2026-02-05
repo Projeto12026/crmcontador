@@ -113,10 +113,20 @@ export function ContractsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Convert empty strings to null/undefined for date fields
+    const sanitizedData = {
+      ...formData,
+      start_date: formData.start_date || null,
+      end_date: formData.end_date || null,
+      description: formData.description || null,
+      notes: formData.notes || null,
+    };
+    
     if (editingContract) {
-      await updateContract.mutateAsync({ id: editingContract.id, data: formData });
+      await updateContract.mutateAsync({ id: editingContract.id, data: sanitizedData });
     } else {
-      await createContract.mutateAsync(formData);
+      await createContract.mutateAsync(sanitizedData);
     }
     setIsOpen(false);
   };
