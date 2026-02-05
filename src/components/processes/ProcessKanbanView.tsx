@@ -19,38 +19,37 @@ type ProcessTemplateStep = Tables<'process_template_steps'>;
 
 interface ProcessKanbanViewProps {
   processes: ProcessWithDetails[];
+  subprocessLabel?: string;
   onEditProcess?: (process: ProcessWithDetails) => void;
   onDeleteProcess?: (id: string) => void;
 }
 
-export function ProcessKanbanView({ processes, onEditProcess, onDeleteProcess }: ProcessKanbanViewProps) {
+export function ProcessKanbanView({ processes, subprocessLabel, onEditProcess, onDeleteProcess }: ProcessKanbanViewProps) {
   const { data: templates = [] } = useProcessTemplates();
   const updateStep = useUpdateProcessStep();
   const [draggedProcess, setDraggedProcess] = useState<ProcessWithDetails | null>(null);
 
-  // Get the template for this subprocess based on the first process
-  const activeTemplate = useMemo(() => {
-    if (processes.length === 0) return null;
-    
-    // Find most common template among processes
-    const templateCounts = new Map<string, number>();
-    processes.forEach(p => {
-      if (p.template_id) {
-        templateCounts.set(p.template_id, (templateCounts.get(p.template_id) || 0) + 1);
-      }
-    });
-    
-    let mostCommonTemplateId = '';
-    let maxCount = 0;
-    templateCounts.forEach((count, id) => {
-      if (count > maxCount) {
-        maxCount = count;
-        mostCommonTemplateId = id;
-      }
-    });
+  // Normalize string for comparison
+  const normalizeString = (str: string) => 
+    str.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    return templates.find(t => t.id === mostCommonTemplateId) || null;
-  }, [processes, templates]);
+  // Find template by subprocess label
+  const activeTemplate = useMemo(() => {
+    if (!subprocessLabel) return null;
+    
+    const normalizedLabel = normalizeString(subprocessLabel);
+    
+    // Find template that matches the subprocess label
+    return templates.find(t => {
+      const normalizedName = normalizeString(t.name);
+      return normalizedName.includes(normalizedLabel) || normalizedLabel.includes(normalizedName);
+    }) || null;
+  }, [subprocessLabel, templates]);
 
   // Get columns from template steps or fallback to default
   const columns = useMemo(() => {
