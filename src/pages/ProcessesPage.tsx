@@ -31,11 +31,22 @@ export function ProcessesPage() {
     setFormDialogOpen(true);
   };
 
+  // Normalize string for comparison (remove accents, hyphens, extra spaces)
+  const normalizeString = (str: string) => 
+    str.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   const getProcessesForSubprocess = (subprocessId: string) => {
-    return processes.filter((p) => 
-      p.title.toLowerCase().includes(subprocessId.replace(/-/g, ' ').toLowerCase()) ||
-      p.title.toLowerCase().includes(subprocessId.split('-').join(' ').toLowerCase())
-    );
+    const normalizedSubprocessId = normalizeString(subprocessId);
+    return processes.filter((p) => {
+      const normalizedTitle = normalizeString(p.title);
+      return normalizedTitle.includes(normalizedSubprocessId) || 
+             normalizedSubprocessId.includes(normalizedTitle.split(' ').slice(0, 2).join(' '));
+    });
   };
 
   const activeSubprocess = subprocesses.find((s) => s.id === activeTab);
