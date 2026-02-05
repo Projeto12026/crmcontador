@@ -160,12 +160,12 @@ export function TaskFormDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Cliente</Label>
-              <Select value={clientId} onValueChange={setClientId}>
+              <Select value={clientId || "none"} onValueChange={(v) => setClientId(v === "none" ? "" : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhum</SelectItem>
+                  <SelectItem value="none">Nenhum</SelectItem>
                   {clients.map((client) => (
                     <SelectItem key={client.id} value={client.id}>
                       {client.name}
@@ -261,14 +261,14 @@ export function TaskFormDialog({
                   <div className="space-y-2">
                     <Label htmlFor="ivyLee">6️⃣ Ivy Lee (ordem 1-6)</Label>
                     <Select
-                      value={ivyLeeOrder?.toString() || ''}
-                      onValueChange={(v) => setIvyLeeOrder(v ? parseInt(v) : undefined)}
+                      value={ivyLeeOrder?.toString() || 'none'}
+                      onValueChange={(v) => setIvyLeeOrder(v === 'none' ? undefined : parseInt(v))}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Não definido" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Não definido</SelectItem>
+                        <SelectItem value="none">Não definido</SelectItem>
                         {[1, 2, 3, 4, 5, 6].map(n => (
                           <SelectItem key={n} value={n.toString()}>
                             Prioridade {n}
