@@ -1,6 +1,8 @@
 import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -12,6 +14,8 @@ import {
   DollarSign,
   Settings,
   ClipboardList,
+  LogOut,
+  Loader2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -38,6 +42,28 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isLoading, signOut, isAuthenticated } = useAuth();
+
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Redirect to auth if not authenticated
+  if (!isAuthenticated) {
+    // Don't show layout, let App.tsx handle the redirect
+    return null;
+  }
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -63,7 +89,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </Link>
           ))}
         </nav>
-        <div className="absolute bottom-4 left-4 right-4">
+        <div className="absolute bottom-4 left-4 right-4 space-y-2">
           <Link
             to="/configuracoes"
             className={cn(
@@ -76,6 +102,20 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Settings className="h-5 w-5" />
             Configurações
           </Link>
+          <div className="border-t pt-2">
+            <p className="truncate px-3 text-xs text-muted-foreground mb-2">
+              {user?.email}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-muted-foreground hover:text-foreground"
+              onClick={handleSignOut}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </div>
       </aside>
 
