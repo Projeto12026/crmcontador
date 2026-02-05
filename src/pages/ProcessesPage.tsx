@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Plus, FolderKanban, ArrowRightLeft, Building2, FileCheck, Shield, MapPin, AlertTriangle, Settings } from 'lucide-react';
-import { useProcesses } from '@/hooks/useProcesses';
+import { useProcesses, ProcessWithDetails } from '@/hooks/useProcesses';
 import { ProcessFormDialog } from '@/components/processes/ProcessFormDialog';
+import { ProcessEditDialog } from '@/components/processes/ProcessEditDialog';
 import { ProcessKanbanView } from '@/components/processes/ProcessKanbanView';
 import { ProcessTemplatesManager } from '@/components/processes/ProcessTemplatesManager';
 
@@ -22,13 +23,20 @@ export function ProcessesPage() {
   const [activeTab, setActiveTab] = useState('migracao-mei-me');
   const [showTemplates, setShowTemplates] = useState(false);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedSubprocess, setSelectedSubprocess] = useState<{ id: string; label: string } | null>(null);
+  const [selectedProcess, setSelectedProcess] = useState<ProcessWithDetails | null>(null);
 
   const { data: processes = [], isLoading } = useProcesses();
 
   const handleNewProcess = (subprocess: { id: string; label: string }) => {
     setSelectedSubprocess(subprocess);
     setFormDialogOpen(true);
+  };
+
+  const handleEditProcess = (process: ProcessWithDetails) => {
+    setSelectedProcess(process);
+    setEditDialogOpen(true);
   };
   // Normalize string for comparison (remove accents, hyphens, extra spaces)
   const normalizeString = (str: string) => 
@@ -120,7 +128,7 @@ export function ProcessesPage() {
                     {isLoading ? (
                       <div className="text-center py-8 text-muted-foreground">Carregando processos...</div>
                     ) : subprocessProcesses.length > 0 ? (
-                      <ProcessKanbanView processes={subprocessProcesses} />
+                      <ProcessKanbanView processes={subprocessProcesses} onEditProcess={handleEditProcess} />
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12">
                         <FolderKanban className="h-12 w-12 text-muted-foreground mb-4" />
@@ -150,6 +158,12 @@ export function ProcessesPage() {
           subprocessLabel={selectedSubprocess.label}
         />
       )}
+
+      <ProcessEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        process={selectedProcess}
+      />
     </div>
   );
 }
