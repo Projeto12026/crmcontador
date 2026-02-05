@@ -30,7 +30,6 @@ export function ProcessesPage() {
     setSelectedSubprocess(subprocess);
     setFormDialogOpen(true);
   };
-
   // Normalize string for comparison (remove accents, hyphens, extra spaces)
   const normalizeString = (str: string) => 
     str.toLowerCase()
@@ -41,11 +40,17 @@ export function ProcessesPage() {
       .trim();
 
   const getProcessesForSubprocess = (subprocessId: string) => {
-    const normalizedSubprocessId = normalizeString(subprocessId);
+    // Find the subprocess definition to get the label
+    const subprocess = subprocesses.find(s => s.id === subprocessId);
+    if (!subprocess) return [];
+    
+    const normalizedLabel = normalizeString(subprocess.label);
+    
     return processes.filter((p) => {
       const normalizedTitle = normalizeString(p.title);
-      return normalizedTitle.includes(normalizedSubprocessId) || 
-             normalizedSubprocessId.includes(normalizedTitle.split(' ').slice(0, 2).join(' '));
+      // Match if title contains the label or vice versa
+      return normalizedTitle.includes(normalizedLabel) || 
+             normalizedLabel.includes(normalizedTitle);
     });
   };
 
