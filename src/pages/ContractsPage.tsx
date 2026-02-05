@@ -135,9 +135,16 @@ export function ContractsPage() {
     updateContract.mutate({ id: contract.id, data: { status: 'active' } });
   };
 
-  const totalMonthly = contracts
+  const totalMonthlyActive = contracts
     ?.filter((c) => c.status === 'active')
     .reduce((sum, c) => sum + (c.monthly_value || 0), 0) || 0;
+
+  const totalMonthlyDraft = contracts
+    ?.filter((c) => c.status === 'draft')
+    .reduce((sum, c) => sum + (c.monthly_value || 0), 0) || 0;
+
+  const totalMonthlyAll = contracts
+    ?.reduce((sum, c) => sum + (c.monthly_value || 0), 0) || 0;
 
   const renderContractsTable = () => {
     if (isLoading) {
@@ -225,9 +232,17 @@ export function ContractsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Contratos</h1>
-          <p className="text-muted-foreground">
-            Receita Mensal ({activeTab === 'nescon' ? 'Nescon' : 'Jean'}): {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthly)}
-          </p>
+          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+            <span>
+              <strong>Receita Ativa:</strong> {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthlyActive)}
+            </span>
+            {totalMonthlyDraft > 0 && (
+              <span>
+                <strong>Rascunhos:</strong> {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalMonthlyDraft)}
+              </span>
+            )}
+            <span className="text-xs">({activeTab === 'nescon' ? 'Nescon' : 'Jean'})</span>
+          </div>
         </div>
         <Button onClick={openNewDialog}>
           <Plus className="mr-2 h-4 w-4" />
