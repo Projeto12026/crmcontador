@@ -722,6 +722,68 @@ export type Database = {
         }
         Relationships: []
       }
+      payroll_obligations: {
+        Row: {
+          client_cnpj: string
+          client_id: string | null
+          client_name: string
+          client_status: string
+          competence: string
+          completed_at: string | null
+          created_at: string
+          department: string
+          due_date: string | null
+          gclick_id: string | null
+          id: string
+          notes: string | null
+          obligation_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_cnpj: string
+          client_id?: string | null
+          client_name: string
+          client_status?: string
+          competence: string
+          completed_at?: string | null
+          created_at?: string
+          department?: string
+          due_date?: string | null
+          gclick_id?: string | null
+          id?: string
+          notes?: string | null
+          obligation_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_cnpj?: string
+          client_id?: string | null
+          client_name?: string
+          client_status?: string
+          competence?: string
+          completed_at?: string | null
+          created_at?: string
+          department?: string
+          due_date?: string | null
+          gclick_id?: string | null
+          id?: string
+          notes?: string | null
+          obligation_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_obligations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       process_steps: {
         Row: {
           completed_at: string | null
