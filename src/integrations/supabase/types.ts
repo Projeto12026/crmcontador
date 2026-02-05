@@ -294,6 +294,7 @@ export type Database = {
           notes: string | null
           phone: string | null
           state: string | null
+          status: Database["public"]["Enums"]["client_status"]
           trading_name: string | null
           updated_at: string
           zip_code: string | null
@@ -311,6 +312,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           state?: string | null
+          status?: Database["public"]["Enums"]["client_status"]
           trading_name?: string | null
           updated_at?: string
           zip_code?: string | null
@@ -328,6 +330,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           state?: string | null
+          status?: Database["public"]["Enums"]["client_status"]
           trading_name?: string | null
           updated_at?: string
           zip_code?: string | null
@@ -1050,6 +1053,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      client_status: "active" | "inactive" | "blocked"
       contract_status:
         | "draft"
         | "active"
@@ -1204,6 +1208,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      client_status: ["active", "inactive", "blocked"],
       contract_status: ["draft", "active", "suspended", "cancelled", "expired"],
       financial_account_type: ["bank", "cash", "credit"],
       financial_status: ["pending", "paid", "overdue", "cancelled"],

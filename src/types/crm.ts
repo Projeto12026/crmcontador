@@ -12,6 +12,7 @@ export type ContractStatus = 'draft' | 'active' | 'suspended' | 'cancelled' | 'e
 export type OnboardingStatus = 'pending' | 'in_progress' | 'completed';
 export type FinancialStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 export type TransactionType = 'income' | 'expense';
+export type ClientStatus = 'active' | 'inactive' | 'blocked';
 export type ContractManager = 'nescon' | 'jean';
 export type TaxType = 'simples' | 'lp' | 'mei';
 
@@ -36,6 +37,7 @@ export interface Client {
   zip_code: string | null;
   notes: string | null;
   is_active: boolean;
+  status: ClientStatus;
   created_at: string;
   updated_at: string;
 }
@@ -364,6 +366,7 @@ export interface ClientFormData {
   state?: string;
   zip_code?: string;
   notes?: string;
+  status?: ClientStatus;
 }
 
 export interface TaskFormData {

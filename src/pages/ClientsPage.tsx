@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
-import { Client, ClientFormData } from '@/types/crm';
+import { Client, ClientFormData, ClientStatus } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,9 +22,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Search, Edit, Trash2, Loader2, Building2, Mail, Phone } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Loader2, Building2, Mail, Phone, Ban, UserX } from 'lucide-react';
+
+const clientStatusConfig: Record<ClientStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ReactNode }> = {
+  active: { label: 'Ativo', variant: 'default' },
+  inactive: { label: 'Inativo', variant: 'secondary', icon: <UserX className="h-3 w-3" /> },
+  blocked: { label: 'Bloqueado', variant: 'destructive', icon: <Ban className="h-3 w-3" /> },
+};
 
 export function ClientsPage() {
   const [isOpen, setIsOpen] = useState(false);
@@ -49,14 +62,17 @@ export function ClientsPage() {
     state: '',
     zip_code: '',
     notes: '',
+    status: 'active',
   });
+  const [statusFilter, setStatusFilter] = useState<ClientStatus | 'all'>('all');
 
-  const filteredClients = clients?.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
+  const filteredClients = clients?.filter((c) => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.document?.toLowerCase().includes(search.toLowerCase()) ||
-      c.trading_name?.toLowerCase().includes(search.toLowerCase())
-  );
+      c.trading_name?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const openNewDialog = () => {
     setEditingClient(null);
@@ -72,6 +88,7 @@ export function ClientsPage() {
       state: '',
       zip_code: '',
       notes: '',
+      status: 'active',
     });
     setIsOpen(true);
   };
@@ -90,6 +107,7 @@ export function ClientsPage() {
       state: client.state || '',
       zip_code: client.zip_code || '',
       notes: client.notes || '',
+      status: client.status || 'active',
     });
     setIsOpen(true);
   };
@@ -124,14 +142,28 @@ export function ClientsPage() {
         </Button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome, CNPJ ou nome fantasia..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, CNPJ ou nome fantasia..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex gap-2">
+          {(['all', 'active', 'inactive', 'blocked'] as const).map((status) => (
+            <Button
+              key={status}
+              variant={statusFilter === status ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter(status)}
+            >
+              {status === 'all' ? 'Todos' : clientStatusConfig[status].label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -162,8 +194,9 @@ export function ClientsPage() {
                       </Badge>
                     )}
                   </div>
-                  <Badge variant={client.is_active ? 'default' : 'secondary'}>
-                    {client.is_active ? 'Ativo' : 'Inativo'}
+                  <Badge variant={clientStatusConfig[client.status || 'active'].variant} className="flex items-center gap-1">
+                    {clientStatusConfig[client.status || 'active'].icon}
+                    {clientStatusConfig[client.status || 'active'].label}
                   </Badge>
                 </div>
                 <div className="mt-3 space-y-1 text-sm text-muted-foreground">
@@ -286,13 +319,31 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Observações</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="notes">Observações</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select 
+                  value={formData.status || 'active'} 
+                  onValueChange={(v) => setFormData({ ...formData, status: v as ClientStatus })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                    <SelectItem value="blocked">Bloqueado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>

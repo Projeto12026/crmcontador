@@ -33,12 +33,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
 
-const statusConfig: Record<ContractStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  draft: { label: 'Rascunho', variant: 'secondary' },
-  active: { label: 'Ativo', variant: 'default' },
-  suspended: { label: 'Suspenso', variant: 'outline' },
-  cancelled: { label: 'Cancelado', variant: 'destructive' },
-  expired: { label: 'Expirado', variant: 'secondary' },
+const statusConfig: Record<ContractStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; isFinalized: boolean }> = {
+  draft: { label: 'Rascunho', variant: 'secondary', isFinalized: false },
+  active: { label: 'Ativo', variant: 'default', isFinalized: false },
+  suspended: { label: 'Suspenso', variant: 'outline', isFinalized: true },
+  cancelled: { label: 'Cancelado', variant: 'destructive', isFinalized: true },
+  expired: { label: 'Expirado', variant: 'secondary', isFinalized: true },
 };
 
 const taxTypeConfig: Record<TaxType, { label: string; color: string }> = {
@@ -159,7 +159,7 @@ export function ContractsPage() {
   const totalMonthlyAll = contracts
     ?.reduce((sum, c) => sum + (c.monthly_value || 0), 0) || 0;
 
-  const renderContractsTable = () => {
+  const renderContractsTable = (contractsList: Contract[], showFinalized: boolean = false) => {
     if (isLoading) {
       return (
         <div className="flex items-center justify-center py-12">
@@ -168,10 +168,13 @@ export function ContractsPage() {
       );
     }
 
-    if (!contracts?.length) {
+    // Filter by finalized status
+    const filtered = contractsList?.filter(c => statusConfig[c.status].isFinalized === showFinalized) || [];
+
+    if (!filtered.length) {
       return (
-        <div className="text-center py-12 text-muted-foreground">
-          Nenhum contrato encontrado
+        <div className="text-center py-8 text-muted-foreground">
+          {showFinalized ? 'Nenhum contrato finalizado' : 'Nenhum contrato ativo'}
         </div>
       );
     }
@@ -192,55 +195,64 @@ export function ContractsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.map((contract) => (
-                <TableRow key={contract.id}>
-                  <TableCell className="font-medium">
-                    {contract.client?.name || contract.client_name || '-'}
-                  </TableCell>
-                  <TableCell>{contract.title}</TableCell>
-                  <TableCell>
-                    {contract.tax_type ? (
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${taxTypeConfig[contract.tax_type].color}`}>
-                        {taxTypeConfig[contract.tax_type].label}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {contract.monthly_value
-                      ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.monthly_value)
-                      : '-'}
-                  </TableCell>
-                  <TableCell>Dia {contract.billing_day || 10}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusConfig[contract.status].variant}>
-                      {statusConfig[contract.status].label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {contract.status === 'draft' && (
-                        <Button variant="ghost" size="sm" onClick={() => activateContract(contract)}>
-                          Ativar
-                        </Button>
+              {filtered.map((contract) => {
+                const isFinalized = statusConfig[contract.status].isFinalized;
+                return (
+                  <TableRow 
+                    key={contract.id} 
+                    className={isFinalized ? 'opacity-60 bg-muted/30' : ''}
+                  >
+                    <TableCell className="font-medium">
+                      {contract.client?.name || contract.client_name || '-'}
+                    </TableCell>
+                    <TableCell>{contract.title}</TableCell>
+                    <TableCell>
+                      {contract.tax_type ? (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${taxTypeConfig[contract.tax_type].color}`}>
+                          {taxTypeConfig[contract.tax_type].label}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
                       )}
-                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(contract)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteContract.mutate(contract.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      {contract.monthly_value
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.monthly_value)
+                        : '-'}
+                    </TableCell>
+                    <TableCell>Dia {contract.billing_day || 10}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusConfig[contract.status].variant}>
+                        {statusConfig[contract.status].label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        {contract.status === 'draft' && (
+                          <Button variant="ghost" size="sm" onClick={() => activateContract(contract)}>
+                            Ativar
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(contract)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteContract.mutate(contract.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
     );
   };
+
+  // Count finalized contracts
+  const finalizedCount = contracts?.filter(c => statusConfig[c.status].isFinalized).length || 0;
 
   return (
     <div className="space-y-6">
@@ -302,12 +314,34 @@ export function ContractsPage() {
           </div>
         </div>
 
-        <TabsContent value="nescon" className="mt-4">
-          {renderContractsTable()}
+        <TabsContent value="nescon" className="mt-4 space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Contratos Ativos</h3>
+            {renderContractsTable(contracts || [], false)}
+          </div>
+          {finalizedCount > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-muted-foreground">
+                Contratos Finalizados ({finalizedCount})
+              </h3>
+              {renderContractsTable(contracts || [], true)}
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="jean" className="mt-4">
-          {renderContractsTable()}
+        <TabsContent value="jean" className="mt-4 space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Contratos Ativos</h3>
+            {renderContractsTable(contracts || [], false)}
+          </div>
+          {finalizedCount > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-muted-foreground">
+                Contratos Finalizados ({finalizedCount})
+              </h3>
+              {renderContractsTable(contracts || [], true)}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
