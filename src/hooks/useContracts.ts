@@ -15,7 +15,7 @@ export function useContracts(filters?: ContractFilters) {
     queryFn: async () => {
       let query = supabase
         .from('contracts')
-        .select('*, clients(id, name)')
+        .select('*, clients(id, name), client_name')
         .order('created_at', { ascending: false });
       
       if (filters?.status) {
