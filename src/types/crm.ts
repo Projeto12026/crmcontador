@@ -149,7 +149,8 @@ export interface ProcessStep {
 
 export interface Contract {
   id: string;
-  client_id: string;
+  client_id: string | null;
+  client_name: string | null;
   title: string;
   description: string | null;
   status: ContractStatus;
@@ -397,7 +398,8 @@ export interface ProcessFormData {
 }
 
 export interface ContractFormData {
-  client_id: string;
+  client_id?: string | null;
+  client_name?: string | null;
   title: string;
   description?: string;
   monthly_value?: number;

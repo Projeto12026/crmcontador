@@ -65,7 +65,8 @@ export function ContractsPage() {
   const deleteContract = useDeleteContract();
 
   const [formData, setFormData] = useState<ContractFormData & { status?: ContractStatus }>({
-    client_id: '',
+    client_id: null,
+    client_name: '',
     title: '',
     description: '',
     monthly_value: undefined,
@@ -77,11 +78,14 @@ export function ContractsPage() {
     tax_type: undefined,
     status: 'draft',
   });
+  const [clientInputMode, setClientInputMode] = useState<'select' | 'free'>('select');
 
   const openNewDialog = () => {
     setEditingContract(null);
+    setClientInputMode('select');
     setFormData({
-      client_id: '',
+      client_id: null,
+      client_name: '',
       title: '',
       description: '',
       monthly_value: undefined,
@@ -97,8 +101,12 @@ export function ContractsPage() {
 
   const openEditDialog = (contract: Contract) => {
     setEditingContract(contract);
+    // Determine input mode based on whether contract has a linked client
+    const hasLinkedClient = !!contract.client_id && !!contract.client;
+    setClientInputMode(hasLinkedClient ? 'select' : 'free');
     setFormData({
-      client_id: contract.client_id,
+      client_id: contract.client_id || null,
+      client_name: contract.client_name || contract.client?.name || '',
       title: contract.title,
       description: contract.description || '',
       monthly_value: contract.monthly_value || undefined,
@@ -113,12 +121,15 @@ export function ContractsPage() {
     setIsOpen(true);
   };
 
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Convert empty strings to null/undefined for date fields
     const sanitizedData = {
       ...formData,
+      client_id: formData.client_id || null,
+      client_name: formData.client_name || null,
       start_date: formData.start_date || null,
       end_date: formData.end_date || null,
       description: formData.description || null,
@@ -183,7 +194,9 @@ export function ContractsPage() {
             <TableBody>
               {contracts.map((contract) => (
                 <TableRow key={contract.id}>
-                  <TableCell className="font-medium">{contract.client?.name}</TableCell>
+                  <TableCell className="font-medium">
+                    {contract.client?.name || contract.client_name || '-'}
+                  </TableCell>
                   <TableCell>{contract.title}</TableCell>
                   <TableCell>
                     {contract.tax_type ? (
@@ -305,23 +318,55 @@ export function ContractsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Cliente *</Label>
-              <Select 
-                value={formData.client_id || 'none'} 
-                onValueChange={(v) => setFormData({ ...formData, client_id: v === 'none' ? '' : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Selecione um cliente</SelectItem>
-                  {clients?.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Cliente</Label>
+              <div className="flex gap-2 mb-2">
+                <Button
+                  type="button"
+                  variant={clientInputMode === 'select' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setClientInputMode('select');
+                    setFormData({ ...formData, client_name: '', client_id: null });
+                  }}
+                >
+                  Selecionar cadastrado
+                </Button>
+                <Button
+                  type="button"
+                  variant={clientInputMode === 'free' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setClientInputMode('free');
+                    setFormData({ ...formData, client_id: null });
+                  }}
+                >
+                  Nome livre
+                </Button>
+              </div>
+              {clientInputMode === 'select' ? (
+                <Select 
+                  value={formData.client_id || 'none'} 
+                  onValueChange={(v) => setFormData({ ...formData, client_id: v === 'none' ? null : v, client_name: null })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {clients?.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={formData.client_name || ''}
+                  onChange={(e) => setFormData({ ...formData, client_name: e.target.value, client_id: null })}
+                  placeholder="Digite o nome do cliente"
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
