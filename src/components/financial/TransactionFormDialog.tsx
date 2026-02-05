@@ -52,6 +52,8 @@ export function TransactionFormDialog({
     origin_destination: '',
     type,
     is_future: false,
+    is_installment: false,
+    installment_count: 2,
   });
 
   const [formData, setFormData] = useState<CashFlowTransactionFormData>(getInitialFormData());
@@ -215,15 +217,48 @@ export function TransactionFormDialog({
             </div>
           </div>
           
-          <div className="flex items-center gap-3 py-2">
-            <Switch
-              id="is_future"
-              checked={formData.is_future}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_future: checked })}
-            />
-            <Label htmlFor="is_future" className="cursor-pointer">
-              Valor projetado (futuro)
-            </Label>
+          <div className="space-y-3 py-2 border rounded-lg p-3 bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="is_future"
+                checked={formData.is_future}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_future: checked })}
+              />
+              <Label htmlFor="is_future" className="cursor-pointer">
+                Valor projetado (futuro)
+              </Label>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <Switch
+                id="is_installment"
+                checked={formData.is_installment}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_installment: checked })}
+                disabled={!!editingTransaction}
+              />
+              <Label htmlFor="is_installment" className="cursor-pointer">
+                Parcelado
+              </Label>
+              {formData.is_installment && (
+                <div className="flex items-center gap-2 ml-4">
+                  <Input
+                    type="number"
+                    min="2"
+                    max="60"
+                    value={formData.installment_count || 2}
+                    onChange={(e) => setFormData({ ...formData, installment_count: Number(e.target.value) })}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">parcelas</span>
+                </div>
+              )}
+            </div>
+            
+            {formData.is_installment && formData.value > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Valor por parcela: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.value / (formData.installment_count || 2))}
+              </p>
+            )}
           </div>
           
           <div className="space-y-2">

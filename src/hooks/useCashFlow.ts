@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, addMonths, parseISO } from 'date-fns';
 
 // Buscar lançamentos
 export function useCashFlowTransactions(filters?: {
@@ -141,57 +141,68 @@ export function useCashFlowByGroup() {
   });
 }
 
-// Criar lançamento
+// Criar lançamento (com suporte a parcelamento)
 export function useCreateCashFlowTransaction() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: CashFlowTransactionFormData) => {
-      const insertData: Record<string, unknown> = {
-        date: data.date,
-        account_id: data.account_id,
-        description: data.description,
-        value: data.value,
-        origin_destination: data.origin_destination,
-        type: data.type,
-        financial_account_id: data.financial_account_id || null,
-        client_id: data.client_id || null,
-        contract_id: data.contract_id || null,
-        notes: data.notes || null,
-        paid_by_company: data.paid_by_company || false,
-      };
+      const installmentCount = data.is_installment ? (data.installment_count || 2) : 1;
+      const valuePerInstallment = data.value / installmentCount;
+      const baseDate = parseISO(data.date);
+      
+      const transactionsToInsert = [];
 
-      // Definir valores futuros ou realizados
-      if (data.is_future) {
-        if (data.type === 'income') {
-          insertData.future_income = data.value;
-          insertData.future_expense = 0;
-          insertData.income = 0;
-          insertData.expense = 0;
-        } else {
-          insertData.future_expense = data.value;
-          insertData.future_income = 0;
-          insertData.income = 0;
-          insertData.expense = 0;
-        }
-      } else {
-        if (data.type === 'income') {
-          insertData.income = data.value;
-          insertData.expense = 0;
-          insertData.future_income = 0;
-          insertData.future_expense = 0;
-        } else {
-          insertData.expense = data.value;
-          insertData.income = 0;
-          insertData.future_income = 0;
-          insertData.future_expense = 0;
-        }
-      }
+      for (let i = 0; i < installmentCount; i++) {
+        const installmentDate = addMonths(baseDate, i);
+        const description = installmentCount > 1 
+          ? `${data.description} (${i + 1}/${installmentCount})`
+          : data.description;
 
-      const { data: result, error } = await supabase
-        .from('cash_flow_transactions')
-        .insert({
+        const insertData: Record<string, unknown> = {
+          date: format(installmentDate, 'yyyy-MM-dd'),
+          account_id: data.account_id,
+          description,
+          value: valuePerInstallment,
+          origin_destination: data.origin_destination,
+          type: data.type,
+          financial_account_id: data.financial_account_id || null,
+          client_id: data.client_id || null,
+          contract_id: data.contract_id || null,
+          notes: data.notes || null,
+          paid_by_company: data.paid_by_company || false,
+        };
+
+        // Definir valores futuros ou realizados
+        if (data.is_future || i > 0) {
+          // Primeira parcela pode ser realizada, demais são sempre projetadas
+          if (data.type === 'income') {
+            insertData.future_income = valuePerInstallment;
+            insertData.future_expense = 0;
+            insertData.income = 0;
+            insertData.expense = 0;
+          } else {
+            insertData.future_expense = valuePerInstallment;
+            insertData.future_income = 0;
+            insertData.income = 0;
+            insertData.expense = 0;
+          }
+        } else {
+          if (data.type === 'income') {
+            insertData.income = valuePerInstallment;
+            insertData.expense = 0;
+            insertData.future_income = 0;
+            insertData.future_expense = 0;
+          } else {
+            insertData.expense = valuePerInstallment;
+            insertData.income = 0;
+            insertData.future_income = 0;
+            insertData.future_expense = 0;
+          }
+        }
+
+        transactionsToInsert.push({
           date: insertData.date as string,
           account_id: insertData.account_id as string,
           description: insertData.description as string,
@@ -207,18 +218,27 @@ export function useCreateCashFlowTransaction() {
           expense: insertData.expense as number,
           future_income: insertData.future_income as number,
           future_expense: insertData.future_expense as number,
-        })
-        .select()
-        .single();
+        });
+      }
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .insert(transactionsToInsert)
+        .select();
 
       if (error) throw error;
-      return result as CashFlowTransaction;
+      return result as CashFlowTransaction[];
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
-      toast({ title: 'Lançamento criado!' });
+      const count = data.length;
+      toast({ 
+        title: count > 1 
+          ? `${count} lançamentos criados!` 
+          : 'Lançamento criado!' 
+      });
     },
     onError: (error) => {
       toast({ title: 'Erro ao criar lançamento', description: error.message, variant: 'destructive' });
