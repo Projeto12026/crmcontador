@@ -372,7 +372,7 @@ export type Database = {
       contracts: {
         Row: {
           billing_day: number | null
-          client_id: string
+          client_id: string | null
           created_at: string
           description: string | null
           end_date: string | null
@@ -388,7 +388,7 @@ export type Database = {
         }
         Insert: {
           billing_day?: number | null
-          client_id: string
+          client_id?: string | null
           created_at?: string
           description?: string | null
           end_date?: string | null
@@ -404,7 +404,7 @@ export type Database = {
         }
         Update: {
           billing_day?: number | null
-          client_id?: string
+          client_id?: string | null
           created_at?: string
           description?: string | null
           end_date?: string | null
