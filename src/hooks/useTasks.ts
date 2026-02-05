@@ -50,6 +50,35 @@ export function useCreateTask() {
         .single();
       
       if (error) throw error;
+      
+      // Send to Zapier if webhook is configured
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'zapier_webhook_url')
+        .single();
+
+      if (settings?.value && typeof settings.value === 'object' && 'webhookUrl' in settings.value) {
+        const webhookUrl = (settings.value as any).webhookUrl;
+        try {
+          await supabase.functions.invoke('send-task-to-zapier', {
+            body: {
+              webhookUrl,
+              task: {
+                title: result.title,
+                description: result.description,
+                due_date: result.due_date,
+                priority: result.priority,
+                status: result.status,
+              },
+            },
+          });
+        } catch (zapierError) {
+          console.error('Error sending task to Zapier:', zapierError);
+          // Don't fail the task creation if Zapier sync fails
+        }
+      }
+      
       return result as Task;
     },
     onSuccess: () => {
