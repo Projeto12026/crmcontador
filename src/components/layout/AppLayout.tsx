@@ -11,6 +11,7 @@ import {
   UserPlus,
   DollarSign,
   Settings,
+  ClipboardList,
 } from 'lucide-react';
 
 interface NavItem {
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { label: 'Processos', href: '/processos', icon: <FolderKanban className="h-5 w-5" /> },
   { label: 'Contratos', href: '/contratos', icon: <FileText className="h-5 w-5" /> },
   { label: 'Onboarding', href: '/onboarding', icon: <UserPlus className="h-5 w-5" /> },
+  { label: 'Folha de Pagamento', href: '/folha-pagamento', icon: <ClipboardList className="h-5 w-5" /> },
   { label: 'Financeiro', href: '/financeiro', icon: <DollarSign className="h-5 w-5" /> },
 ];
 

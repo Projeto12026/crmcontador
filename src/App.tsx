@@ -11,6 +11,7 @@ import { CommercialPage } from "./pages/CommercialPage";
 import { ContractsPage } from "./pages/ContractsPage";
 import { ProcessesPage } from "./pages/ProcessesPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
+import { PayrollPage } from "./pages/PayrollPage";
 import { FinancialPage } from "./pages/FinancialPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/contratos" element={<ContractsPage />} />
             <Route path="/processos" element={<ProcessesPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/folha-pagamento" element={<PayrollPage />} />
             <Route path="/financeiro" element={<FinancialPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
