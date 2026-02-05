@@ -824,6 +824,7 @@ export type Database = {
         | "cancelled"
         | "expired"
       financial_status: "pending" | "paid" | "overdue" | "cancelled"
+      forma_envio: "EMAIL" | "WHATSAPP"
       lead_status:
         | "prospecting"
         | "contact"
@@ -971,6 +972,7 @@ export const Constants = {
     Enums: {
       contract_status: ["draft", "active", "suspended", "cancelled", "expired"],
       financial_status: ["pending", "paid", "overdue", "cancelled"],
+      forma_envio: ["EMAIL", "WHATSAPP"],
       lead_status: [
         "prospecting",
         "contact",
