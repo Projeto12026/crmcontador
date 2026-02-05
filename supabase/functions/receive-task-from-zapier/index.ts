@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,11 +10,9 @@ interface GoogleTaskPayload {
   notes?: string;
   due?: string;
   status?: string;
-  google_task_id?: string;
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -24,13 +22,10 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase environment variables');
       throw new Error('Server configuration error');
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Parse the incoming webhook payload from Zapier
     const payload: GoogleTaskPayload = await req.json();
     console.log('Received task from Zapier:', JSON.stringify(payload));
 
@@ -41,24 +36,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Map Google Tasks status to our status
-    let taskStatus: 'pending' | 'completed' = 'pending';
-    if (payload.status === 'completed') {
-      taskStatus = 'completed';
-    }
-
-    // Parse due date if provided
+    const taskStatus = payload.status === 'completed' ? 'completed' : 'pending';
     let dueDate: string | null = null;
+    
     if (payload.due) {
       try {
-        // Google Tasks due date format is typically ISO 8601
         dueDate = new Date(payload.due).toISOString().split('T')[0];
       } catch (e) {
         console.warn('Could not parse due date:', payload.due);
       }
     }
 
-    // Check if task already exists (by title to avoid duplicates)
     const { data: existingTasks } = await supabase
       .from('tasks')
       .select('id')
@@ -66,14 +54,12 @@ Deno.serve(async (req) => {
       .limit(1);
 
     if (existingTasks && existingTasks.length > 0) {
-      console.log('Task already exists, skipping:', payload.title);
       return new Response(
         JSON.stringify({ success: true, message: 'Task already exists', skipped: true }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Insert the new task
     const { data: newTask, error } = await supabase
       .from('tasks')
       .insert({
@@ -87,12 +73,7 @@ Deno.serve(async (req) => {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error inserting task:', error);
-      throw error;
-    }
-
-    console.log('Task created successfully:', newTask.id);
+    if (error) throw error;
 
     return new Response(
       JSON.stringify({ success: true, task: newTask }),
@@ -101,10 +82,8 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error processing webhook:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
