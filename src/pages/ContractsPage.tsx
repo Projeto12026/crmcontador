@@ -64,7 +64,7 @@ export function ContractsPage() {
   const updateContract = useUpdateContract();
   const deleteContract = useDeleteContract();
 
-  const [formData, setFormData] = useState<ContractFormData>({
+  const [formData, setFormData] = useState<ContractFormData & { status?: ContractStatus }>({
     client_id: '',
     title: '',
     description: '',
@@ -75,6 +75,7 @@ export function ContractsPage() {
     notes: '',
     manager: 'nescon',
     tax_type: undefined,
+    status: 'draft',
   });
 
   const openNewDialog = () => {
@@ -107,6 +108,7 @@ export function ContractsPage() {
       notes: contract.notes || '',
       manager: contract.manager || 'nescon',
       tax_type: contract.tax_type || undefined,
+      status: contract.status,
     });
     setIsOpen(true);
   };
@@ -356,6 +358,27 @@ export function ContractsPage() {
                 </Select>
               </div>
             </div>
+
+            {editingContract && (
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select 
+                  value={formData.status || 'draft'} 
+                  onValueChange={(v) => setFormData({ ...formData, status: v as ContractStatus })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Rascunho</SelectItem>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="suspended">Suspenso</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                    <SelectItem value="expired">Expirado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="title">Título *</Label>
