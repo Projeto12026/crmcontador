@@ -132,24 +132,13 @@ export function ProcessesPage() {
                   <CardContent>
                     {isLoading ? (
                       <div className="text-center py-8 text-muted-foreground">Carregando processos...</div>
-                    ) : subprocessProcesses.length > 0 ? (
+                    ) : (
                       <ProcessKanbanView 
                         processes={subprocessProcesses} 
+                        subprocessLabel={sub.label}
                         onEditProcess={handleEditProcess} 
                         onDeleteProcess={handleDeleteProcess}
                       />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <FolderKanban className="h-12 w-12 text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-medium mb-2">Nenhum processo encontrado</h3>
-                        <p className="text-muted-foreground text-center max-w-md mb-4">
-                          Ainda não há processos de {sub.label.toLowerCase()} cadastrados.
-                        </p>
-                        <Button variant="outline" onClick={() => handleNewProcess(sub)}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          Iniciar Processo
-                        </Button>
-                      </div>
                     )}
                   </CardContent>
                 </Card>
