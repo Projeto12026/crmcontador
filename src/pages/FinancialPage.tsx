@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { CashFlowSummaryCards } from '@/components/financial/CashFlowSummaryCard
 import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { TransactionFormDialog } from '@/components/financial/TransactionFormDialog';
 import { CashFlowProjectionView } from '@/components/financial/CashFlowProjectionView';
+import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -37,9 +38,11 @@ export function FinancialPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   
-  // Filtros de período
-  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  // Filtros do fluxo de caixa
+  const [filters, setFilters] = useState<CashFlowFiltersValues>({
+    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+  });
   
   // Período da projeção (6 meses a partir de hoje)
   const [projectionStartDate, setProjectionStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -50,8 +53,10 @@ export function FinancialPage() {
   const { data: categoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
   const { data: transactions, isLoading: loadingTransactions } = useCashFlowTransactions({
-    startDate,
-    endDate,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+    accountId: filters.accountId,
+    type: filters.type,
   });
   
   // Transações para projeção (período estendido)
@@ -61,8 +66,44 @@ export function FinancialPage() {
     endDate: projectionEndDate,
   });
   
-  const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(startDate, endDate);
+  const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate);
   const { data: clients } = useClients();
+
+  // Filtrar transações localmente para filtros que não estão na query
+  const filteredTransactions = useMemo(() => {
+    if (!transactions) return [];
+    
+    return transactions.filter(tx => {
+      // Filtro por grupo
+      if (filters.groupNumber && tx.account?.group_number !== filters.groupNumber) {
+        return false;
+      }
+      
+      // Filtro por conta financeira
+      if (filters.financialAccountId && tx.financial_account_id !== filters.financialAccountId) {
+        return false;
+      }
+      
+      // Filtro por status
+      if (filters.status) {
+        const hasFuture = (tx.type === 'income' ? tx.future_income : tx.future_expense) > 0;
+        const hasExecuted = (tx.type === 'income' ? tx.income : tx.expense) > 0;
+        
+        if (filters.status === 'projected' && (!hasFuture || hasExecuted)) return false;
+        if (filters.status === 'executed' && (!hasExecuted || hasFuture)) return false;
+        if (filters.status === 'mixed' && !(hasFuture && hasExecuted)) return false;
+      }
+      
+      return true;
+    });
+  }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status]);
+
+  const resetFilters = () => {
+    setFilters({
+      startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+      endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+    });
+  };
   
   // Mutations
   const createTransaction = useCreateCashFlowTransaction();
@@ -164,38 +205,14 @@ export function FinancialPage() {
         </TabsList>
 
         <TabsContent value="cash-flow" className="space-y-6 mt-4">
-          {/* Filtros de período */}
-          <Card>
-            <CardContent className="py-4">
-              <div className="flex items-end gap-4">
-                <div className="space-y-2">
-                  <Label>Data Inicial</Label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data Final</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-                    setEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-                  }}
-                >
-                  Mês Atual
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Filtros */}
+          <CashFlowFilters
+            filters={filters}
+            onFiltersChange={setFilters}
+            accounts={categoriesFlat || []}
+            financialAccounts={financialAccounts || []}
+            onReset={resetFilters}
+          />
           
           {/* Resumo */}
           {summary && (
@@ -204,7 +221,7 @@ export function FinancialPage() {
           
           {/* Tabela de lançamentos */}
           <TransactionsTable
-            transactions={transactions || []}
+            transactions={filteredTransactions}
             isLoading={loadingTransactions}
             onSettle={(id) => settleTransaction.mutate(id)}
             onDelete={(id) => deleteTransaction.mutate(id)}
