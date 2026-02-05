@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   Users,
+  Calendar,
 } from 'lucide-react';
 import {
   usePayrollObligations,
@@ -52,6 +53,33 @@ const statusConfig: Record<PayrollObligationStatus, { label: string; variant: 'd
   completed: { label: 'Concluída', variant: 'default', icon: <CheckCircle2 className="h-3 w-3" /> },
 };
 
+// Helper function to get previous month competence in MM/YYYY format
+function getPreviousMonthCompetence(): string {
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const month = String(prevMonth.getMonth() + 1).padStart(2, '0');
+  const year = prevMonth.getFullYear();
+  return `${month}/${year}`;
+}
+
+// Helper function to format competence for display
+function formatCompetenceLabel(competence: string): string {
+  const months = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  
+  const parts = competence.split('/');
+  if (parts.length === 2) {
+    const monthIndex = parseInt(parts[0], 10) - 1;
+    const year = parts[1];
+    if (monthIndex >= 0 && monthIndex < 12) {
+      return `${months[monthIndex]} ${year}`;
+    }
+  }
+  return competence;
+}
+
 export function PayrollPage() {
   const { data: obligations = [], isLoading } = usePayrollObligations();
   const { data: stats } = usePayrollStats();
@@ -59,10 +87,13 @@ export function PayrollPage() {
   const batchComplete = useBatchCompleteObligations();
   const syncGClick = useSyncGClick();
 
+  // Get previous month as default competence
+  const defaultCompetence = getPreviousMonthCompetence();
+
   const [filters, setFilters] = useState<PayrollFilters>({
     search: '',
     status: 'all',
-    competence: 'all',
+    competence: defaultCompetence,
     department: 'all',
   });
 
@@ -74,6 +105,19 @@ export function PayrollPage() {
     const unique = [...new Set(obligations.map(o => o.competence))];
     return unique.sort().reverse();
   }, [obligations]);
+
+  // Update filter to match available competence if default not found
+  useEffect(() => {
+    if (competences.length > 0 && filters.competence !== 'all') {
+      const hasDefault = competences.includes(filters.competence);
+      if (!hasDefault) {
+        // Try to find the previous month or use the most recent
+        const prevMonth = getPreviousMonthCompetence();
+        const matchingCompetence = competences.find(c => c === prevMonth) || competences[0];
+        setFilters(prev => ({ ...prev, competence: matchingCompetence }));
+      }
+    }
+  }, [competences]);
 
   const departments = useMemo(() => {
     const unique = [...new Set(obligations.map(o => o.department))];
@@ -142,15 +186,17 @@ export function PayrollPage() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Based on filtered competence */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="bg-muted/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total de Obrigações</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total {filters.competence !== 'all' ? `(${formatCompetenceLabel(filters.competence)})` : ''}
+            </CardTitle>
             <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.total || 0}</div>
+            <div className="text-2xl font-bold">{filteredObligations.length}</div>
           </CardContent>
         </Card>
 
@@ -160,7 +206,9 @@ export function PayrollPage() {
             <Clock className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats?.pending || 0}</div>
+            <div className="text-2xl font-bold text-orange-600">
+              {filteredObligations.filter(o => o.status === 'pending').length}
+            </div>
           </CardContent>
         </Card>
 
@@ -170,7 +218,9 @@ export function PayrollPage() {
             <AlertTriangle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats?.delayed || 0}</div>
+            <div className="text-2xl font-bold text-red-600">
+              {filteredObligations.filter(o => o.status === 'delayed').length}
+            </div>
           </CardContent>
         </Card>
 
@@ -180,7 +230,9 @@ export function PayrollPage() {
             <CheckCircle2 className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats?.completed || 0}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {filteredObligations.filter(o => o.status === 'completed').length}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -240,13 +292,16 @@ export function PayrollPage() {
                   value={filters.competence}
                   onValueChange={(value) => setFilters(prev => ({ ...prev, competence: value }))}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[200px]">
+                    <Calendar className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="Competência" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas Competências</SelectItem>
                     {competences.map(comp => (
-                      <SelectItem key={comp} value={comp}>{comp}</SelectItem>
+                      <SelectItem key={comp} value={comp}>
+                        {formatCompetenceLabel(comp)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
