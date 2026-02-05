@@ -305,3 +305,71 @@ export function useDeleteCashFlowTransaction() {
     },
   });
 }
+
+// Atualizar lançamento
+export function useUpdateCashFlowTransaction() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: CashFlowTransactionFormData }) => {
+      const updateData: Record<string, unknown> = {
+        date: data.date,
+        account_id: data.account_id,
+        description: data.description,
+        value: data.value,
+        origin_destination: data.origin_destination,
+        type: data.type,
+        financial_account_id: data.financial_account_id || null,
+        client_id: data.client_id || null,
+        notes: data.notes || null,
+      };
+
+      // Definir valores futuros ou realizados
+      if (data.is_future) {
+        if (data.type === 'income') {
+          updateData.future_income = data.value;
+          updateData.future_expense = 0;
+          updateData.income = 0;
+          updateData.expense = 0;
+        } else {
+          updateData.future_expense = data.value;
+          updateData.future_income = 0;
+          updateData.income = 0;
+          updateData.expense = 0;
+        }
+      } else {
+        if (data.type === 'income') {
+          updateData.income = data.value;
+          updateData.expense = 0;
+          updateData.future_income = 0;
+          updateData.future_expense = 0;
+        } else {
+          updateData.expense = data.value;
+          updateData.income = 0;
+          updateData.future_income = 0;
+          updateData.future_expense = 0;
+        }
+      }
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result as CashFlowTransaction;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Lançamento atualizado!' });
+    },
+    onError: (error) => {
+      toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
+    },
+  });
+}
