@@ -99,13 +99,17 @@ export function OnboardingCard({ onboarding }: OnboardingCardProps) {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span>{onboarding.template?.name}</span>
-                  <span>•</span>
-                  <span>
-                    {formatDistanceToNow(new Date(onboarding.created_at), { 
-                      addSuffix: true, 
-                      locale: ptBR 
-                    })}
-                  </span>
+                  {onboarding.created_at && (
+                    <>
+                      <span>•</span>
+                      <span>
+                        {formatDistanceToNow(new Date(onboarding.created_at), { 
+                          addSuffix: true, 
+                          locale: ptBR 
+                        })}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
