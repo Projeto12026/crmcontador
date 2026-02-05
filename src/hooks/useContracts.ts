@@ -1,19 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Contract, ContractFormData, ContractStatus } from '@/types/crm';
+import { Contract, ContractFormData, ContractStatus, ContractManager, TaxType } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 
-export function useContracts(status?: ContractStatus) {
+interface ContractFilters {
+  status?: ContractStatus;
+  manager?: ContractManager;
+  taxType?: TaxType;
+}
+
+export function useContracts(filters?: ContractFilters) {
   return useQuery({
-    queryKey: ['contracts', status],
+    queryKey: ['contracts', filters],
     queryFn: async () => {
       let query = supabase
         .from('contracts')
         .select('*, clients(id, name)')
         .order('created_at', { ascending: false });
       
-      if (status) {
-        query = query.eq('status', status);
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
+      }
+      if (filters?.manager) {
+        query = query.eq('manager', filters.manager);
+      }
+      if (filters?.taxType) {
+        query = query.eq('tax_type', filters.taxType);
       }
       
       const { data, error } = await query;

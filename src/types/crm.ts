@@ -12,6 +12,8 @@ export type ContractStatus = 'draft' | 'active' | 'suspended' | 'cancelled' | 'e
 export type OnboardingStatus = 'pending' | 'in_progress' | 'completed';
 export type FinancialStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 export type TransactionType = 'income' | 'expense';
+export type ContractManager = 'nescon' | 'jean';
+export type TaxType = 'simples' | 'lp' | 'mei';
 
 // Task Views for productivity strategies
 export type TaskViewType = 'list' | 'eisenhower' | 'kanban' | 'two_lists' | 'eat_frog' | 'ivy_lee';
@@ -156,6 +158,8 @@ export interface Contract {
   end_date: string | null;
   billing_day: number | null;
   notes: string | null;
+  manager: ContractManager | null;
+  tax_type: TaxType | null;
   created_at: string;
   updated_at: string;
   client?: Pick<Client, 'id' | 'name'> | null;
@@ -301,6 +305,8 @@ export interface ContractFormData {
   end_date?: string;
   billing_day?: number;
   notes?: string;
+  manager?: ContractManager;
+  tax_type?: TaxType;
 }
 
 export interface TransactionFormData {
