@@ -12,23 +12,39 @@ export function useAccountCategories() {
         .from('account_categories')
         .select(`
           *,
-          financial_accounts!account_categories_id_fkey(*)
+          financial_accounts(*)
         `)
         .order('id');
 
       if (error) throw error;
 
       // Organizar em árvore hierárquica
-      const categories = data as (AccountCategory & { financial_accounts: unknown[] })[];
+      type RawCategory = {
+        id: string;
+        name: string;
+        group_number: number;
+        parent_id: string | null;
+        created_at: string;
+        updated_at: string;
+        financial_accounts: FinancialAccount | FinancialAccount[] | null;
+      };
+      
+      const categories = data as RawCategory[];
       const categoryMap = new Map<string, AccountCategory>();
       const rootCategories: AccountCategory[] = [];
 
       // Primeiro passo: criar map de todas as categorias
       categories.forEach(cat => {
-        const faList = cat.financial_accounts as FinancialAccount[] | undefined;
+        const fa = cat.financial_accounts;
+        const financialAccount = Array.isArray(fa) ? fa[0] : fa;
         categoryMap.set(cat.id, {
-          ...cat,
-          financial_account: faList?.[0] || null,
+          id: cat.id,
+          name: cat.name,
+          group_number: cat.group_number as AccountGroupNumber,
+          parent_id: cat.parent_id,
+          created_at: cat.created_at,
+          updated_at: cat.updated_at,
+          financial_account: financialAccount || null,
           subcategories: [],
         });
       });
