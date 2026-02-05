@@ -1,0 +1,307 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType } from '@/types/crm';
+import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+
+// Buscar lançamentos
+export function useCashFlowTransactions(filters?: {
+  startDate?: string;
+  endDate?: string;
+  accountId?: string;
+  type?: TransactionType;
+}) {
+  return useQuery({
+    queryKey: ['cash_flow_transactions', filters],
+    queryFn: async () => {
+      let query = supabase
+        .from('cash_flow_transactions')
+        .select(`
+          *,
+          account_categories(*),
+          financial_accounts(*),
+          clients(id, name)
+        `)
+        .order('date', { ascending: false });
+
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate);
+      }
+      if (filters?.accountId) {
+        query = query.eq('account_id', filters.accountId);
+      }
+      if (filters?.type) {
+        query = query.eq('type', filters.type);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      return data.map(item => ({
+        ...item,
+        account: item.account_categories,
+        financial_account: item.financial_accounts,
+        client: item.clients,
+      })) as CashFlowTransaction[];
+    },
+  });
+}
+
+// Resumo do fluxo de caixa por período
+export function useCashFlowSummary(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['cash_flow_summary', startDate, endDate],
+    queryFn: async () => {
+      // Buscar transações do período, excluindo grupos 7 e 8
+      const { data: transactions, error } = await supabase
+        .from('cash_flow_transactions')
+        .select(`
+          income, expense, future_income, future_expense,
+          account_categories!inner(group_number)
+        `)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
+
+      // Filtrar grupos 7 e 8
+      const filtered = transactions?.filter(t => {
+        const group = (t.account_categories as { group_number: number })?.group_number;
+        return group && group <= 6;
+      }) || [];
+
+      const summary: CashFlowSummary = {
+        totalIncome: 0,
+        totalExpense: 0,
+        balance: 0,
+        projectedIncome: 0,
+        projectedExpense: 0,
+        executedIncome: 0,
+        executedExpense: 0,
+        executedBalance: 0,
+        transactionCount: filtered.length,
+      };
+
+      filtered.forEach(t => {
+        const income = Number(t.income || 0);
+        const expense = Number(t.expense || 0);
+        const futureIncome = Number(t.future_income || 0);
+        const futureExpense = Number(t.future_expense || 0);
+
+        summary.executedIncome += income;
+        summary.executedExpense += expense;
+        summary.projectedIncome += futureIncome;
+        summary.projectedExpense += futureExpense;
+        summary.totalIncome += income + futureIncome;
+        summary.totalExpense += expense + futureExpense;
+      });
+
+      summary.balance = summary.totalIncome - summary.totalExpense;
+      summary.executedBalance = summary.executedIncome - summary.executedExpense;
+
+      return summary;
+    },
+  });
+}
+
+// Fluxo por grupo (estatísticas)
+export function useCashFlowByGroup() {
+  return useQuery({
+    queryKey: ['cash_flow_by_group'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cash_flow_transactions')
+        .select(`
+          income, expense, future_income, future_expense,
+          account_categories!inner(group_number, name)
+        `);
+
+      if (error) throw error;
+
+      const groupStats: Record<number, { total: number; name: string }> = {};
+
+      data?.forEach(t => {
+        const group = (t.account_categories as { group_number: number; name: string })?.group_number;
+        if (!group || group > 6) return; // Excluir grupos 7 e 8
+
+        if (!groupStats[group]) {
+          groupStats[group] = { total: 0, name: '' };
+        }
+
+        const income = Number(t.income || 0) + Number(t.future_income || 0);
+        const expense = Number(t.expense || 0) + Number(t.future_expense || 0);
+        groupStats[group].total += income - expense;
+      });
+
+      return groupStats;
+    },
+  });
+}
+
+// Criar lançamento
+export function useCreateCashFlowTransaction() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: CashFlowTransactionFormData) => {
+      const insertData: Record<string, unknown> = {
+        date: data.date,
+        account_id: data.account_id,
+        description: data.description,
+        value: data.value,
+        origin_destination: data.origin_destination,
+        type: data.type,
+        financial_account_id: data.financial_account_id || null,
+        client_id: data.client_id || null,
+        contract_id: data.contract_id || null,
+        notes: data.notes || null,
+        paid_by_company: data.paid_by_company || false,
+      };
+
+      // Definir valores futuros ou realizados
+      if (data.is_future) {
+        if (data.type === 'income') {
+          insertData.future_income = data.value;
+          insertData.future_expense = 0;
+          insertData.income = 0;
+          insertData.expense = 0;
+        } else {
+          insertData.future_expense = data.value;
+          insertData.future_income = 0;
+          insertData.income = 0;
+          insertData.expense = 0;
+        }
+      } else {
+        if (data.type === 'income') {
+          insertData.income = data.value;
+          insertData.expense = 0;
+          insertData.future_income = 0;
+          insertData.future_expense = 0;
+        } else {
+          insertData.expense = data.value;
+          insertData.income = 0;
+          insertData.future_income = 0;
+          insertData.future_expense = 0;
+        }
+      }
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .insert({
+          date: insertData.date as string,
+          account_id: insertData.account_id as string,
+          description: insertData.description as string,
+          value: insertData.value as number,
+          origin_destination: insertData.origin_destination as string,
+          type: insertData.type as TransactionType,
+          financial_account_id: insertData.financial_account_id as string | null,
+          client_id: insertData.client_id as string | null,
+          contract_id: insertData.contract_id as string | null,
+          notes: insertData.notes as string | null,
+          paid_by_company: insertData.paid_by_company as boolean,
+          income: insertData.income as number,
+          expense: insertData.expense as number,
+          future_income: insertData.future_income as number,
+          future_expense: insertData.future_expense as number,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result as CashFlowTransaction;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Lançamento criado!' });
+    },
+    onError: (error) => {
+      toast({ title: 'Erro ao criar lançamento', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+// Liquidar valor futuro (projetado → realizado)
+export function useSettleTransaction() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      // Buscar transação atual
+      const { data: tx, error: fetchError } = await supabase
+        .from('cash_flow_transactions')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const updateData: Record<string, unknown> = {};
+      const futureIncome = Number(tx.future_income || 0);
+      const futureExpense = Number(tx.future_expense || 0);
+
+      if (futureIncome > 0) {
+        updateData.income = Number(tx.income || 0) + futureIncome;
+        updateData.future_income = 0;
+        updateData.value = updateData.income;
+      } else if (futureExpense > 0) {
+        updateData.expense = Number(tx.expense || 0) + futureExpense;
+        updateData.future_expense = 0;
+        updateData.value = updateData.expense;
+      } else {
+        throw new Error('Não há valor futuro para liquidar');
+      }
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result as CashFlowTransaction;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Valor liquidado!' });
+    },
+    onError: (error) => {
+      toast({ title: 'Erro ao liquidar', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+// Excluir lançamento
+export function useDeleteCashFlowTransaction() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('cash_flow_transactions')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Lançamento excluído!' });
+    },
+    onError: (error) => {
+      toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
+    },
+  });
+}

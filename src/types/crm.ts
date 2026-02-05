@@ -220,6 +220,106 @@ export interface ClientOnboardingItem {
   updated_at: string;
 }
 
+// ============================================
+// FINANCEIRO - NOVO MODELO DE DADOS
+// ============================================
+
+export type FinancialAccountType = 'bank' | 'cash' | 'credit';
+
+// Grupos do Plano de Contas
+export const ACCOUNT_GROUPS = {
+  1: 'Receitas',
+  2: 'Dízimos',
+  3: 'Ofertas',
+  4: 'Sonhos',
+  5: 'Despesas Dedutíveis',
+  6: 'Despesas',
+  7: 'Banco/Caixa',
+  8: 'Cartões de Crédito',
+} as const;
+
+export type AccountGroupNumber = keyof typeof ACCOUNT_GROUPS;
+
+// Plano de Contas hierárquico
+export interface AccountCategory {
+  id: string; // ID numérico hierárquico (ex: 1, 1.1, 1.2)
+  name: string;
+  group_number: AccountGroupNumber;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
+  subcategories?: AccountCategory[];
+  financial_account?: FinancialAccount | null;
+}
+
+// Contas Financeiras (Caixa, Bancos, Cartões)
+export interface FinancialAccount {
+  id: string;
+  name: string;
+  type: FinancialAccountType;
+  initial_balance: number;
+  current_balance: number;
+  account_category_id: string | null;
+  created_at: string;
+  updated_at: string;
+  account_category?: AccountCategory | null;
+}
+
+// Lançamentos do Fluxo de Caixa
+export interface CashFlowTransaction {
+  id: string;
+  date: string;
+  account_id: string;
+  description: string;
+  future_income: number;
+  future_expense: number;
+  income: number;
+  expense: number;
+  value: number;
+  origin_destination: string;
+  financial_account_id: string | null;
+  type: TransactionType;
+  paid_by_company: boolean;
+  client_id: string | null;
+  contract_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  account?: AccountCategory | null;
+  financial_account?: FinancialAccount | null;
+  client?: Pick<Client, 'id' | 'name'> | null;
+}
+
+// Resumo do Fluxo de Caixa
+export interface CashFlowSummary {
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+  projectedIncome: number;
+  projectedExpense: number;
+  executedIncome: number;
+  executedExpense: number;
+  executedBalance: number;
+  transactionCount: number;
+}
+
+// Fluxo por conta e mês
+export interface CashFlowByAccount {
+  accountId: string;
+  accountName: string;
+  groupNumber: AccountGroupNumber;
+  months: {
+    [key: string]: { // YYYY-MM
+      projected: number;
+      executed: number;
+    };
+  };
+}
+
+// ============================================
+// FINANCEIRO ANTIGO (manter compatibilidade)
+// ============================================
+
 export interface FinancialCategory {
   id: string;
   name: string;
@@ -318,6 +418,41 @@ export interface TransactionFormData {
   amount: number;
   due_date: string;
   notes?: string;
+}
+
+// Form para novo lançamento do Fluxo de Caixa
+export interface CashFlowTransactionFormData {
+  date: string;
+  account_id: string;
+  description: string;
+  value: number;
+  origin_destination: string;
+  type: TransactionType;
+  financial_account_id?: string;
+  is_future?: boolean; // Se true, usa future_income/future_expense
+  client_id?: string;
+  contract_id?: string;
+  notes?: string;
+  paid_by_company?: boolean;
+}
+
+// Form para Conta do Plano de Contas
+export interface AccountCategoryFormData {
+  id: string;
+  name: string;
+  group_number: number;
+  parent_id?: string;
+  create_financial_account?: boolean;
+  financial_account_type?: FinancialAccountType;
+  financial_account_initial_balance?: number;
+}
+
+// Form para Conta Financeira
+export interface FinancialAccountFormData {
+  name: string;
+  type: FinancialAccountType;
+  initial_balance: number;
+  account_category_id?: string;
 }
 
 // ============================================
