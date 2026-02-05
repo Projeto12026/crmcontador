@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Plus, FolderKanban, ArrowRightLeft, Building2, FileCheck, Shield, MapPin, AlertTriangle, Settings } from 'lucide-react';
-import { useProcesses, ProcessWithDetails } from '@/hooks/useProcesses';
+import { useProcesses, useDeleteProcess, ProcessWithDetails } from '@/hooks/useProcesses';
 import { ProcessFormDialog } from '@/components/processes/ProcessFormDialog';
 import { ProcessEditDialog } from '@/components/processes/ProcessEditDialog';
 import { ProcessKanbanView } from '@/components/processes/ProcessKanbanView';
@@ -28,6 +28,11 @@ export function ProcessesPage() {
   const [selectedProcess, setSelectedProcess] = useState<ProcessWithDetails | null>(null);
 
   const { data: processes = [], isLoading } = useProcesses();
+  const deleteProcess = useDeleteProcess();
+
+  const handleDeleteProcess = async (id: string) => {
+    await deleteProcess.mutateAsync(id);
+  };
 
   const handleNewProcess = (subprocess: { id: string; label: string }) => {
     setSelectedSubprocess(subprocess);
@@ -128,7 +133,11 @@ export function ProcessesPage() {
                     {isLoading ? (
                       <div className="text-center py-8 text-muted-foreground">Carregando processos...</div>
                     ) : subprocessProcesses.length > 0 ? (
-                      <ProcessKanbanView processes={subprocessProcesses} onEditProcess={handleEditProcess} />
+                      <ProcessKanbanView 
+                        processes={subprocessProcesses} 
+                        onEditProcess={handleEditProcess} 
+                        onDeleteProcess={handleDeleteProcess}
+                      />
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12">
                         <FolderKanban className="h-12 w-12 text-muted-foreground mb-4" />
