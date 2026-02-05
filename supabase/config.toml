@@ -1,13 +1,1 @@
-project_id = "xtnnwlfvpbiipfwsdoho"
-
-[functions.cora-api]
-verify_jwt = false
-
-[functions.whatsapp-api]
-verify_jwt = false
-
-[functions.process-boleto]
-verify_jwt = false
-
-[functions.sync-status]
-verify_jwt = false
+project_id = "shsdsijtemvrgmpjoece"
