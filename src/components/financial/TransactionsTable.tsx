@@ -19,6 +19,7 @@ interface TransactionsTableProps {
   isLoading?: boolean;
   onSettle?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onEdit?: (transaction: CashFlowTransaction) => void;
 }
 
 const formatCurrency = (value: number) =>
@@ -28,7 +29,8 @@ export function TransactionsTable({
   transactions, 
   isLoading, 
   onSettle, 
-  onDelete 
+  onDelete,
+  onEdit,
 }: TransactionsTableProps) {
   if (isLoading) {
     return (
@@ -70,7 +72,11 @@ export function TransactionsTable({
               const hasExecuted = (executedValue || 0) > 0;
 
               return (
-                <TableRow key={tx.id}>
+                <TableRow 
+                  key={tx.id} 
+                  className="cursor-pointer"
+                  onDoubleClick={() => onEdit?.(tx)}
+                >
                   <TableCell>
                     {format(parseISO(tx.date), "dd/MM/yyyy", { locale: ptBR })}
                   </TableCell>

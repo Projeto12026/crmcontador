@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CashFlowTransactionFormData, TransactionType, AccountCategory, FinancialAccount } from '@/types/crm';
+import { useState, useEffect } from 'react';
+import { CashFlowTransaction, CashFlowTransactionFormData, TransactionType, AccountCategory, FinancialAccount } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ interface TransactionFormDialogProps {
   accounts: AccountCategory[];
   financialAccounts: FinancialAccount[];
   clients?: Client[];
+  editingTransaction?: CashFlowTransaction | null;
 }
 
 export function TransactionFormDialog({
@@ -41,8 +42,9 @@ export function TransactionFormDialog({
   accounts,
   financialAccounts,
   clients = [],
+  editingTransaction,
 }: TransactionFormDialogProps) {
-  const [formData, setFormData] = useState<CashFlowTransactionFormData>({
+  const getInitialFormData = (): CashFlowTransactionFormData => ({
     date: new Date().toISOString().split('T')[0],
     account_id: '',
     description: '',
@@ -52,18 +54,37 @@ export function TransactionFormDialog({
     is_future: false,
   });
 
+  const [formData, setFormData] = useState<CashFlowTransactionFormData>(getInitialFormData());
+
+  // Preencher formulário quando estiver editando
+  useEffect(() => {
+    if (editingTransaction) {
+      const futureValue = editingTransaction.type === 'income' 
+        ? (editingTransaction.future_income || 0) 
+        : (editingTransaction.future_expense || 0);
+      const isFuture = futureValue > 0;
+      
+      setFormData({
+        date: editingTransaction.date.split('T')[0],
+        account_id: editingTransaction.account_id,
+        description: editingTransaction.description,
+        value: editingTransaction.value,
+        origin_destination: editingTransaction.origin_destination,
+        type: editingTransaction.type,
+        is_future: isFuture,
+        financial_account_id: editingTransaction.financial_account_id || undefined,
+        client_id: editingTransaction.client_id || undefined,
+        notes: editingTransaction.notes || undefined,
+      });
+    } else {
+      setFormData(getInitialFormData());
+    }
+  }, [editingTransaction, type, open]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ ...formData, type });
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      account_id: '',
-      description: '',
-      value: 0,
-      origin_destination: '',
-      type,
-      is_future: false,
-    });
+    onSubmit({ ...formData, type: editingTransaction?.type || type });
+    setFormData(getInitialFormData());
   };
 
   // Filtrar contas por tipo (grupos 1-4 para receitas, 5-6 para despesas)
@@ -80,7 +101,9 @@ export function TransactionFormDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {type === 'income' ? 'Nova Receita' : 'Nova Despesa'}
+            {editingTransaction 
+              ? 'Editar Lançamento' 
+              : (type === 'income' ? 'Nova Receita' : 'Nova Despesa')}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">

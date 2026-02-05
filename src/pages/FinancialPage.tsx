@@ -9,7 +9,7 @@ import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus } from 'luc
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
-import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
+import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
 
 import { AccountCategoryTree } from '@/components/financial/AccountCategoryTree';
@@ -18,12 +18,13 @@ import { DeleteConfirmDialog } from '@/components/financial/DeleteConfirmDialog'
 import { CashFlowSummaryCards } from '@/components/financial/CashFlowSummaryCards';
 import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { TransactionFormDialog } from '@/components/financial/TransactionFormDialog';
-import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS } from '@/types/crm';
+import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
   const [activeTab, setActiveTab] = useState('cash-flow');
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>('income');
+  const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
   
   // Estado para dialog de categoria
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -52,6 +53,7 @@ export function FinancialPage() {
   
   // Mutations
   const createTransaction = useCreateCashFlowTransaction();
+  const updateTransaction = useUpdateCashFlowTransaction();
   const settleTransaction = useSettleTransaction();
   const deleteTransaction = useDeleteCashFlowTransaction();
   const createCategory = useCreateAccountCategory();
@@ -59,7 +61,14 @@ export function FinancialPage() {
   const deleteCategory = useDeleteAccountCategory();
   
   const openNewTransaction = (type: TransactionType) => {
+    setEditingTransaction(null);
     setTransactionType(type);
+    setTransactionDialogOpen(true);
+  };
+
+  const openEditTransaction = (transaction: CashFlowTransaction) => {
+    setEditingTransaction(transaction);
+    setTransactionType(transaction.type);
     setTransactionDialogOpen(true);
   };
   
@@ -182,6 +191,7 @@ export function FinancialPage() {
             isLoading={loadingTransactions}
             onSettle={(id) => settleTransaction.mutate(id)}
             onDelete={(id) => deleteTransaction.mutate(id)}
+            onEdit={openEditTransaction}
           />
         </TabsContent>
 
@@ -224,20 +234,31 @@ export function FinancialPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog de novo lançamento */}
+      {/* Dialog de novo/editar lançamento */}
       <TransactionFormDialog
         open={transactionDialogOpen}
-        onOpenChange={setTransactionDialogOpen}
-        onSubmit={(data) => {
-          createTransaction.mutate(data, {
-            onSuccess: () => setTransactionDialogOpen(false),
-          });
+        onOpenChange={(open) => {
+          setTransactionDialogOpen(open);
+          if (!open) setEditingTransaction(null);
         }}
-        isPending={createTransaction.isPending}
+        onSubmit={(data) => {
+          if (editingTransaction) {
+            updateTransaction.mutate(
+              { id: editingTransaction.id, data },
+              { onSuccess: () => setTransactionDialogOpen(false) }
+            );
+          } else {
+            createTransaction.mutate(data, {
+              onSuccess: () => setTransactionDialogOpen(false),
+            });
+          }
+        }}
+        isPending={createTransaction.isPending || updateTransaction.isPending}
         type={transactionType}
         accounts={categoriesFlat || []}
         financialAccounts={financialAccounts || []}
         clients={clients}
+        editingTransaction={editingTransaction}
       />
       
       {/* Dialog de conta */}
