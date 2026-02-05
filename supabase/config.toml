@@ -1,1 +1,7 @@
 project_id = "rvekakbpmkemgiwkkdok"
+
+[functions.sync-gclick-obligations]
+verify_jwt = false
+
+[functions.send-task-to-zapier]
+verify_jwt = false
