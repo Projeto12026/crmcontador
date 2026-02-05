@@ -41,7 +41,11 @@ export function TaskCard({
 }: TaskCardProps) {
   const isOverdue = () => {
     if (!task.due_date || task.status === 'completed') return false;
-    return isAfter(new Date(), parseISO(task.due_date));
+    const dueDate = parseISO(task.due_date);
+    const today = new Date();
+    // Comparar apenas as datas, sem considerar horário
+    // Atrasado apenas se a data atual for DEPOIS do dia de vencimento
+    return today.setHours(0, 0, 0, 0) > dueDate.setHours(23, 59, 59, 999);
   };
 
   const isCompleted = task.status === 'completed';
