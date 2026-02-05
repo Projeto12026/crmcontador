@@ -434,6 +434,9 @@ export interface CashFlowTransactionFormData {
   contract_id?: string;
   notes?: string;
   paid_by_company?: boolean;
+  // Campos para parcelamento
+  is_installment?: boolean;
+  installment_count?: number;
 }
 
 // Form para Conta do Plano de Contas
