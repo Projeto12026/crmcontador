@@ -14,6 +14,133 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_categories: {
+        Row: {
+          created_at: string
+          group_number: number
+          id: string
+          name: string
+          parent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_number: number
+          id: string
+          name: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_number?: number
+          id?: string
+          name?: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "account_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_flow_transactions: {
+        Row: {
+          account_id: string
+          client_id: string | null
+          contract_id: string | null
+          created_at: string
+          date: string
+          description: string
+          expense: number | null
+          financial_account_id: string | null
+          future_expense: number | null
+          future_income: number | null
+          id: string
+          income: number | null
+          notes: string | null
+          origin_destination: string
+          paid_by_company: boolean
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          account_id: string
+          client_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          date: string
+          description: string
+          expense?: number | null
+          financial_account_id?: string | null
+          future_expense?: number | null
+          future_income?: number | null
+          id?: string
+          income?: number | null
+          notes?: string | null
+          origin_destination: string
+          paid_by_company?: boolean
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          account_id?: string
+          client_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          date?: string
+          description?: string
+          expense?: number | null
+          financial_account_id?: string | null
+          future_expense?: number | null
+          future_income?: number | null
+          id?: string
+          income?: number | null
+          notes?: string | null
+          origin_destination?: string
+          paid_by_company?: boolean
+          type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "account_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_flow_transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_flow_transactions_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_flow_transactions_financial_account_id_fkey"
+            columns: ["financial_account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_contacts: {
         Row: {
           client_id: string
@@ -297,6 +424,47 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_accounts: {
+        Row: {
+          account_category_id: string | null
+          created_at: string
+          current_balance: number
+          id: string
+          initial_balance: number
+          name: string
+          type: Database["public"]["Enums"]["financial_account_type"]
+          updated_at: string
+        }
+        Insert: {
+          account_category_id?: string | null
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          name: string
+          type: Database["public"]["Enums"]["financial_account_type"]
+          updated_at?: string
+        }
+        Update: {
+          account_category_id?: string | null
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          name?: string
+          type?: Database["public"]["Enums"]["financial_account_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_accounts_account_category_id_fkey"
+            columns: ["account_category_id"]
+            isOneToOne: true
+            referencedRelation: "account_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -823,6 +991,7 @@ export type Database = {
         | "suspended"
         | "cancelled"
         | "expired"
+      financial_account_type: "bank" | "cash" | "credit"
       financial_status: "pending" | "paid" | "overdue" | "cancelled"
       forma_envio: "EMAIL" | "WHATSAPP"
       lead_status:
@@ -971,6 +1140,7 @@ export const Constants = {
   public: {
     Enums: {
       contract_status: ["draft", "active", "suspended", "cancelled", "expired"],
+      financial_account_type: ["bank", "cash", "credit"],
       financial_status: ["pending", "paid", "overdue", "cancelled"],
       forma_envio: ["EMAIL", "WHATSAPP"],
       lead_status: [
