@@ -2,8 +2,18 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Suporta variáveis em runtime (EasyPanel) ou em build time (Vite)
+declare global {
+  interface Window {
+    __ENV__?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string };
+  }
+}
+const SUPABASE_URL = typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_URL
+  ? window.__ENV__.VITE_SUPABASE_URL
+  : import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_PUBLISHABLE_KEY
+  ? window.__ENV__.VITE_SUPABASE_PUBLISHABLE_KEY
+  : import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
