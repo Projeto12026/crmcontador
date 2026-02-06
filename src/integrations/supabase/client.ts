@@ -2,18 +2,21 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Suporta variáveis em runtime (EasyPanel) ou em build time (Vite)
+// Suporta variáveis em runtime (EasyPanel), build time (Vite) ou fallback fixo
 declare global {
   interface Window {
     __ENV__?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string };
   }
 }
-const SUPABASE_URL = typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_URL
-  ? window.__ENV__.VITE_SUPABASE_URL
-  : import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_PUBLISHABLE_KEY
-  ? window.__ENV__.VITE_SUPABASE_PUBLISHABLE_KEY
-  : import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const DEFAULT_SUPABASE_URL = 'https://rvekakbpmkemgiwkkdok.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2ZWtha2JwbWtlbWdpd2trZG9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzMjEzODQsImV4cCI6MjA4NTg5NzM4NH0.u2dYj-8FPXt53JDAJIljl6wZmTzd0-4lq-LWsuvILlY';
+
+const SUPABASE_URL = (typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_URL)
+  || import.meta.env.VITE_SUPABASE_URL
+  || DEFAULT_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && window.__ENV__?.VITE_SUPABASE_PUBLISHABLE_KEY)
+  || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  || DEFAULT_SUPABASE_ANON_KEY;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
