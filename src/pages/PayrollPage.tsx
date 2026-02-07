@@ -4,6 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   Select,
   SelectContent,
@@ -29,6 +34,7 @@ import {
   FileSpreadsheet,
   Users,
   Calendar,
+  CalendarRange,
 } from 'lucide-react';
 import {
   usePayrollObligations,
@@ -43,7 +49,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 interface PayrollFilters {
   search: string;
   status: PayrollObligationStatus | 'all';
-  competence: string;
+  filterMode: 'year' | 'month' | 'period';
+  year: string;
+  month: string; // 0-11 index or 'all'
+  periodStart: Date | undefined;
+  periodEnd: Date | undefined;
   department: string;
 }
 
@@ -53,20 +63,9 @@ const statusConfig: Record<PayrollObligationStatus, { label: string; variant: 'd
   completed: { label: 'Concluída', variant: 'default', icon: <CheckCircle2 className="h-3 w-3" /> },
 };
 
-// Month abbreviations used in the database (Portuguese)
 const MONTH_ABBR = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-// Helper function to get previous month competence in MMM/YYYY format (e.g., "JAN/2025")
-function getPreviousMonthCompetence(): string {
-  const now = new Date();
-  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const monthAbbr = MONTH_ABBR[prevMonth.getMonth()];
-  const year = prevMonth.getFullYear();
-  return `${monthAbbr}/${year}`;
-}
-
-// Helper function to format competence for display (e.g., "JAN/2025" -> "Janeiro 2025")
 function formatCompetenceLabel(competence: string): string {
   const parts = competence.split('/');
   if (parts.length === 2) {
@@ -80,17 +79,17 @@ function formatCompetenceLabel(competence: string): string {
   return competence;
 }
 
-// Helper function to sort competences chronologically (most recent first)
-function sortCompetences(competences: string[]): string[] {
-  return competences.sort((a, b) => {
-    const [monthA, yearA] = a.split('/');
-    const [monthB, yearB] = b.split('/');
-    const idxA = MONTH_ABBR.indexOf(monthA.toUpperCase());
-    const idxB = MONTH_ABBR.indexOf(monthB.toUpperCase());
-    const dateA = parseInt(yearA) * 12 + idxA;
-    const dateB = parseInt(yearB) * 12 + idxB;
-    return dateB - dateA; // Most recent first
-  });
+// Parse competence string "MMM/YYYY" into { monthIndex, year }
+function parseCompetence(competence: string): { monthIndex: number; year: number } | null {
+  const parts = competence.split('/');
+  if (parts.length === 2) {
+    const monthIndex = MONTH_ABBR.indexOf(parts[0].toUpperCase());
+    const year = parseInt(parts[1]);
+    if (monthIndex >= 0 && !isNaN(year)) {
+      return { monthIndex, year };
+    }
+  }
+  return null;
 }
 
 export function PayrollPage() {
@@ -100,46 +99,49 @@ export function PayrollPage() {
   const batchComplete = useBatchCompleteObligations();
   const syncGClick = useSyncGClick();
 
-  // Get previous month as default competence
-  const defaultCompetence = getPreviousMonthCompetence();
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const [filters, setFilters] = useState<PayrollFilters>({
     search: '',
     status: 'all',
-    competence: defaultCompetence,
+    filterMode: 'month',
+    year: String(prevMonth.getFullYear()),
+    month: String(prevMonth.getMonth()),
+    periodStart: undefined,
+    periodEnd: undefined,
     department: 'all',
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string>('obrigacoes');
 
-  // Get unique competences and departments for filters
-  const competences = useMemo(() => {
-    const unique = [...new Set(obligations.map(o => o.competence))];
-    return sortCompetences(unique);
+  // Extract available years from obligations
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    obligations.forEach(o => {
+      const parsed = parseCompetence(o.competence);
+      if (parsed) years.add(String(parsed.year));
+    });
+    return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
   }, [obligations]);
 
-  // Update filter to match available competence if default not found
+  // Set year if current not available
   useEffect(() => {
-    if (competences.length > 0 && filters.competence !== 'all') {
-      const hasDefault = competences.includes(filters.competence);
-      if (!hasDefault) {
-        // Try to find the previous month or use the most recent
-        const prevMonth = getPreviousMonthCompetence();
-        const matchingCompetence = competences.find(c => c === prevMonth) || competences[0];
-        setFilters(prev => ({ ...prev, competence: matchingCompetence }));
-      }
+    if (availableYears.length > 0 && !availableYears.includes(filters.year)) {
+      setFilters(prev => ({ ...prev, year: availableYears[0] }));
     }
-  }, [competences]);
+  }, [availableYears]);
 
   const departments = useMemo(() => {
     const unique = [...new Set(obligations.map(o => o.department))];
     return unique.sort();
   }, [obligations]);
 
-  // Filter obligations
+  // Filter obligations based on mode
   const filteredObligations = useMemo(() => {
     return obligations.filter(ob => {
+      // Text search
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         if (
@@ -150,8 +152,24 @@ export function PayrollPage() {
         }
       }
       if (filters.status !== 'all' && ob.status !== filters.status) return false;
-      if (filters.competence !== 'all' && ob.competence !== filters.competence) return false;
       if (filters.department !== 'all' && ob.department !== filters.department) return false;
+
+      // Date/competence filter
+      const parsed = parseCompetence(ob.competence);
+      if (!parsed) return false;
+
+      if (filters.filterMode === 'year') {
+        return String(parsed.year) === filters.year;
+      } else if (filters.filterMode === 'month') {
+        return String(parsed.year) === filters.year && String(parsed.monthIndex) === filters.month;
+      } else if (filters.filterMode === 'period') {
+        if (!filters.periodStart || !filters.periodEnd) return true;
+        const compDate = new Date(parsed.year, parsed.monthIndex, 1);
+        const startDate = new Date(filters.periodStart.getFullYear(), filters.periodStart.getMonth(), 1);
+        const endDate = new Date(filters.periodEnd.getFullYear(), filters.periodEnd.getMonth(), 1);
+        return compDate >= startDate && compDate <= endDate;
+      }
+
       return true;
     });
   }, [obligations, filters]);
@@ -179,6 +197,12 @@ export function PayrollPage() {
     });
   };
 
+  const filterModeLabel = filters.filterMode === 'year' 
+    ? `Ano ${filters.year}` 
+    : filters.filterMode === 'month' 
+      ? `${MONTH_NAMES[parseInt(filters.month)] || ''} ${filters.year}`
+      : 'Período';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -199,12 +223,12 @@ export function PayrollPage() {
         </Button>
       </div>
 
-      {/* Stats Cards - Based on filtered competence */}
+      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="bg-muted/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
-              Total {filters.competence !== 'all' ? `(${formatCompetenceLabel(filters.competence)})` : ''}
+              Total ({filterModeLabel})
             </CardTitle>
             <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -275,7 +299,8 @@ export function PayrollPage() {
           {/* Filters */}
           <Card>
             <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-4 items-end">
+                {/* Search */}
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -286,11 +311,12 @@ export function PayrollPage() {
                   />
                 </div>
 
+                {/* Status */}
                 <Select
                   value={filters.status}
                   onValueChange={(value) => setFilters(prev => ({ ...prev, status: value as PayrollObligationStatus | 'all' }))}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[160px]">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -301,24 +327,7 @@ export function PayrollPage() {
                   </SelectContent>
                 </Select>
 
-                <Select
-                  value={filters.competence}
-                  onValueChange={(value) => setFilters(prev => ({ ...prev, competence: value }))}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Competência" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas Competências</SelectItem>
-                    {competences.map(comp => (
-                      <SelectItem key={comp} value={comp}>
-                        {formatCompetenceLabel(comp)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
+                {/* Department */}
                 <Select
                   value={filters.department}
                   onValueChange={(value) => setFilters(prev => ({ ...prev, department: value }))}
@@ -333,6 +342,113 @@ export function PayrollPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Date filter row */}
+              <div className="flex flex-wrap gap-3 items-end mt-4">
+                {/* Filter mode */}
+                <Select
+                  value={filters.filterMode}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, filterMode: value as 'year' | 'month' | 'period' }))}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <CalendarRange className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="month">Por Mês e Ano</SelectItem>
+                    <SelectItem value="year">Por Ano</SelectItem>
+                    <SelectItem value="period">Período Personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Year select (for year and month modes) */}
+                {(filters.filterMode === 'year' || filters.filterMode === 'month') && (
+                  <Select
+                    value={filters.year}
+                    onValueChange={(value) => setFilters(prev => ({ ...prev, year: value }))}
+                  >
+                    <SelectTrigger className="w-[120px]">
+                      <Calendar className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Ano" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map(y => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Month select (for month mode) */}
+                {filters.filterMode === 'month' && (
+                  <Select
+                    value={filters.month}
+                    onValueChange={(value) => setFilters(prev => ({ ...prev, month: value }))}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Mês" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTH_NAMES.map((name, idx) => (
+                        <SelectItem key={idx} value={String(idx)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Period date pickers */}
+                {filters.filterMode === 'period' && (
+                  <>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-[160px] justify-start text-left font-normal",
+                            !filters.periodStart && "text-muted-foreground"
+                          )}
+                        >
+                          <Calendar className="mr-2 h-4 w-4" />
+                          {filters.periodStart ? format(filters.periodStart, "MMM/yyyy", { locale: ptBR }) : "Início"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={filters.periodStart}
+                          onSelect={(date) => setFilters(prev => ({ ...prev, periodStart: date }))}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <span className="text-muted-foreground self-center">até</span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-[160px] justify-start text-left font-normal",
+                            !filters.periodEnd && "text-muted-foreground"
+                          )}
+                        >
+                          <Calendar className="mr-2 h-4 w-4" />
+                          {filters.periodEnd ? format(filters.periodEnd, "MMM/yyyy", { locale: ptBR }) : "Fim"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={filters.periodEnd}
+                          onSelect={(date) => setFilters(prev => ({ ...prev, periodEnd: date }))}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </>
+                )}
               </div>
 
               {selectedIds.length > 0 && (
