@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,6 +21,7 @@ import { TransactionFormDialog } from '@/components/financial/TransactionFormDia
 import { CashFlowProjectionView } from '@/components/financial/CashFlowProjectionView';
 import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
 import { FinancialDashboardView } from '@/components/financial/FinancialDashboardView';
+import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -49,6 +50,12 @@ export function FinancialPage() {
   const [projectionStartDate, setProjectionStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [projectionMonths, setProjectionMonths] = useState(6);
   
+  // Filtros do dashboard
+  const [dashboardFilter, setDashboardFilter] = useState<DashboardFilterValues>({
+    startDate: format(startOfYear(new Date()), 'yyyy-MM-dd'),
+    endDate: format(endOfYear(new Date()), 'yyyy-MM-dd'),
+  });
+  
   // Queries
   const { data: categories, isLoading: loadingCategories } = useAccountCategories();
   const { data: categoriesFlat } = useAccountCategoriesFlat();
@@ -67,6 +74,12 @@ export function FinancialPage() {
     endDate: projectionEndDate,
   });
   
+  // Transações para dashboard (filtro próprio)
+  const { data: dashboardTransactions, isLoading: loadingDashboard } = useCashFlowTransactions({
+    startDate: dashboardFilter.startDate,
+    endDate: dashboardFilter.endDate,
+  });
+
   const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate);
   const { data: clients } = useClients();
 
@@ -210,9 +223,10 @@ export function FinancialPage() {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 mt-4">
+          <DashboardFilters onChange={setDashboardFilter} />
           <FinancialDashboardView
-            transactions={projectionTransactions || []}
-            isLoading={loadingProjection}
+            transactions={dashboardTransactions || []}
+            isLoading={loadingDashboard}
           />
         </TabsContent>
 
