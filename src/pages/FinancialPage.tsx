@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3 } from 'lucide-react';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
@@ -20,10 +20,11 @@ import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { TransactionFormDialog } from '@/components/financial/TransactionFormDialog';
 import { CashFlowProjectionView } from '@/components/financial/CashFlowProjectionView';
 import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
+import { FinancialDashboardView } from '@/components/financial/FinancialDashboardView';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
-  const [activeTab, setActiveTab] = useState('cash-flow');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>('income');
   const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
@@ -190,6 +191,10 @@ export function FinancialPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="dashboard" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Dashboard
+          </TabsTrigger>
           <TabsTrigger value="cash-flow" className="gap-2">
             <Wallet className="h-4 w-4" />
             Fluxo de Caixa
@@ -203,6 +208,13 @@ export function FinancialPage() {
             Projeção
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="space-y-6 mt-4">
+          <FinancialDashboardView
+            transactions={projectionTransactions || []}
+            isLoading={loadingProjection}
+          />
+        </TabsContent>
 
         <TabsContent value="cash-flow" className="space-y-6 mt-4">
           {/* Filtros */}
