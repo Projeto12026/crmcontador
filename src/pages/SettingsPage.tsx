@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
-import { Loader2, Eye, EyeOff, Save, Key, Webhook } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Save, Key, Webhook, Download, Database, FileJson } from 'lucide-react';
 
 export function SettingsPage() {
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -16,6 +16,8 @@ export function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingGclick, setIsSavingGclick] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [lastBackup, setLastBackup] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export function SettingsPage() {
       const { data } = await supabase
         .from('settings')
         .select('key, value')
-        .in('key', ['zapier_webhook_url', 'gclick_credentials']);
+        .in('key', ['zapier_webhook_url', 'gclick_credentials', 'last_backup']);
 
       if (data) {
         for (const setting of data) {
@@ -38,6 +40,9 @@ export function SettingsPage() {
             const val = setting.value as any;
             setGclickAppKey(val.app_key || '');
             setGclickAppSecret(val.app_secret || '');
+          }
+          if (setting.key === 'last_backup' && setting.value && typeof setting.value === 'object' && 'date' in setting.value) {
+            setLastBackup((setting.value as any).date || null);
           }
         }
       }
@@ -86,6 +91,70 @@ export function SettingsPage() {
       toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Erro ao salvar', variant: 'destructive' });
     } finally {
       setIsSavingGclick(false);
+    }
+  };
+
+  const downloadJson = (data: unknown, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBackupData = async () => {
+    setIsBackingUp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Não autenticado');
+
+      const { data, error } = await supabase.functions.invoke('backup-data', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (error) throw error;
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      downloadJson(data, `backup-completo-${dateStr}.json`);
+
+      // Save last backup date
+      await supabase.from('settings').upsert(
+        { key: 'last_backup', value: { date: new Date().toISOString() } },
+        { onConflict: 'key' }
+      );
+      setLastBackup(new Date().toISOString());
+
+      toast({ title: 'Sucesso!', description: 'Backup completo baixado com sucesso' });
+    } catch (error) {
+      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Erro ao gerar backup', variant: 'destructive' });
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleBackupSchema = async () => {
+    setIsBackingUp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Não autenticado');
+
+      const { data, error } = await supabase.functions.invoke('backup-data', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (error) throw error;
+
+      // Only tables data without metadata
+      const dateStr = new Date().toISOString().slice(0, 10);
+      downloadJson(data.tables, `backup-dados-${dateStr}.json`);
+
+      toast({ title: 'Sucesso!', description: 'Dados exportados com sucesso' });
+    } catch (error) {
+      toast({ title: 'Erro', description: error instanceof Error ? error.message : 'Erro ao exportar dados', variant: 'destructive' });
+    } finally {
+      setIsBackingUp(false);
     }
   };
 
@@ -205,6 +274,47 @@ export function SettingsPage() {
               ✓ Webhook configurado. Tarefas serão sincronizadas com o Zapier.
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Backup */}
+      <Card>
+        <CardHeader className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Backup do Sistema</CardTitle>
+          </div>
+          <CardDescription>
+            Exporte todos os dados do sistema em formato JSON para restauração futura
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Button onClick={handleBackupData} disabled={isBackingUp}>
+              {isBackingUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {isBackingUp ? 'Gerando backup...' : 'Baixar Backup Completo'}
+            </Button>
+            <Button variant="outline" onClick={handleBackupSchema} disabled={isBackingUp}>
+              <FileJson className="mr-2 h-4 w-4" />
+              Baixar Apenas Dados
+            </Button>
+          </div>
+          {lastBackup && (
+            <div className="rounded-md bg-primary/10 p-3 text-sm text-primary">
+              ✓ Último backup: {new Date(lastBackup).toLocaleString('pt-BR')}
+            </div>
+          )}
+          <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+            <p className="font-medium">O backup inclui:</p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              <li>Clientes, contatos e contratos</li>
+              <li>Transações financeiras e fluxo de caixa</li>
+              <li>Tarefas, processos e templates</li>
+              <li>Leads e atividades comerciais</li>
+              <li>Obrigações de folha de pagamento</li>
+              <li>Configurações do sistema</li>
+            </ul>
+          </div>
         </CardContent>
       </Card>
     </div>
