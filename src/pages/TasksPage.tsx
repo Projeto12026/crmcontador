@@ -93,12 +93,12 @@ export function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Tarefas</h1>
-          <p className="text-muted-foreground">Gerencie suas atividades com diferentes estratégias de produtividade</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">Tarefas</h1>
+          <p className="text-sm text-muted-foreground">Gerencie suas atividades com diferentes estratégias</p>
         </div>
-        <Button onClick={openNewTaskForm}>
+        <Button onClick={openNewTaskForm} size="sm">
           <Plus className="mr-2 h-4 w-4" />
           Nova Tarefa
         </Button>
@@ -106,7 +106,7 @@ export function TasksPage() {
 
       {/* View Tabs */}
       <Tabs value={activeView} onValueChange={(v) => setActiveView(v as TaskViewType)}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
           {(Object.keys(taskViewLabels) as TaskViewType[]).map((view) => (
             <TabsTrigger key={view} value={view} className="text-xs sm:text-sm">
               <span className="hidden sm:inline">{taskViewLabels[view].icon}</span>
