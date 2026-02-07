@@ -63,12 +63,34 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
 
     for (const table of TABLES) {
-      const { data, error } = await supabase.from(table).select("*");
-      if (error) {
-        errors.push(`${table}: ${error.message}`);
+      try {
+        // Fetch all rows (paginate to avoid 1000-row limit)
+        let allRows: unknown[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from(table)
+            .select("*")
+            .range(from, from + pageSize - 1);
+
+          if (error) {
+            errors.push(`${table}: ${error.message}`);
+            hasMore = false;
+          } else {
+            allRows = allRows.concat(data || []);
+            hasMore = (data?.length || 0) === pageSize;
+            from += pageSize;
+          }
+        }
+
+        backup[table] = allRows;
+        console.log(`Table ${table}: ${allRows.length} rows`);
+      } catch (e) {
+        errors.push(`${table}: ${e.message}`);
         backup[table] = [];
-      } else {
-        backup[table] = data || [];
       }
     }
 
