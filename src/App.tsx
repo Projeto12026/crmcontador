@@ -14,6 +14,7 @@ import { ProcessesPage } from "./pages/ProcessesPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { PayrollPage } from "./pages/PayrollPage";
 import { FinancialPage } from "./pages/FinancialPage";
+import { PricingPage } from "./pages/PricingPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AuthPage } from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
@@ -43,6 +44,7 @@ function ProtectedRoutes() {
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/folha-pagamento" element={<PayrollPage />} />
         <Route path="/financeiro" element={<FinancialPage />} />
+        <Route path="/precificacao" element={<PricingPage />} />
         <Route path="/configuracoes" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -790,6 +790,152 @@ export type Database = {
           },
         ]
       }
+      pricing_proposal_items: {
+        Row: {
+          created_at: string
+          department: string
+          hourly_rate: number
+          hours_per_month: number
+          id: string
+          monthly_value: number
+          notes: string | null
+          proposal_id: string
+          service_catalog_id: string | null
+          service_name: string
+        }
+        Insert: {
+          created_at?: string
+          department?: string
+          hourly_rate?: number
+          hours_per_month?: number
+          id?: string
+          monthly_value?: number
+          notes?: string | null
+          proposal_id: string
+          service_catalog_id?: string | null
+          service_name: string
+        }
+        Update: {
+          created_at?: string
+          department?: string
+          hourly_rate?: number
+          hours_per_month?: number
+          id?: string
+          monthly_value?: number
+          notes?: string | null
+          proposal_id?: string
+          service_catalog_id?: string | null
+          service_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_proposal_items_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_proposal_items_service_catalog_id_fkey"
+            columns: ["service_catalog_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_service_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_proposals: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          created_at: string
+          hourly_cost: number
+          id: string
+          markup_percentage: number
+          monthly_revenue: number | null
+          notes: string | null
+          num_employees: number | null
+          num_monthly_invoices: number | null
+          status: string
+          tax_regime: string | null
+          total_monthly_value: number
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          hourly_cost?: number
+          id?: string
+          markup_percentage?: number
+          monthly_revenue?: number | null
+          notes?: string | null
+          num_employees?: number | null
+          num_monthly_invoices?: number | null
+          status?: string
+          tax_regime?: string | null
+          total_monthly_value?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          hourly_cost?: number
+          id?: string
+          markup_percentage?: number
+          monthly_revenue?: number | null
+          notes?: string | null
+          num_employees?: number | null
+          num_monthly_invoices?: number | null
+          status?: string
+          tax_regime?: string | null
+          total_monthly_value?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_proposals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_service_catalog: {
+        Row: {
+          created_at: string
+          default_hours_per_month: number
+          department: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_hours_per_month?: number
+          department?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_hours_per_month?: number
+          department?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       process_steps: {
         Row: {
           completed_at: string | null
