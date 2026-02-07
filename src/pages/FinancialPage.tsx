@@ -171,19 +171,19 @@ export function FinancialPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Financeiro</h1>
-          <p className="text-muted-foreground">Plano de Contas e Fluxo de Caixa</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">Financeiro</h1>
+          <p className="text-sm text-muted-foreground">Plano de Contas e Fluxo de Caixa</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => openNewTransaction('expense')}>
-            <TrendingDown className="mr-2 h-4 w-4" />
-            Nova Despesa
+          <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => openNewTransaction('expense')}>
+            <TrendingDown className="mr-1 h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Nova </span>Despesa
           </Button>
-          <Button onClick={() => openNewTransaction('income')}>
-            <TrendingUp className="mr-2 h-4 w-4" />
-            Nova Receita
+          <Button size="sm" className="flex-1 sm:flex-none" onClick={() => openNewTransaction('income')}>
+            <TrendingUp className="mr-1 h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Nova </span>Receita
           </Button>
         </div>
       </div>
@@ -271,7 +271,7 @@ export function FinancialPage() {
           {/* Filtros de período da projeção */}
           <Card>
             <CardContent className="py-4">
-              <div className="flex items-end gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
                 <div className="space-y-2">
                   <Label>Data Inicial</Label>
                   <Input

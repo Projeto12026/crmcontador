@@ -131,12 +131,12 @@ export function ClientsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Clientes</h1>
-          <p className="text-muted-foreground">Gerencie sua carteira de clientes</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">Clientes</h1>
+          <p className="text-sm text-muted-foreground">Gerencie sua carteira de clientes</p>
         </div>
-        <Button onClick={openNewDialog}>
+        <Button onClick={openNewDialog} size="sm">
           <Plus className="mr-2 h-4 w-4" />
           Novo Cliente
         </Button>
@@ -238,7 +238,7 @@ export function ClientsPage() {
             <DialogTitle>{editingClient ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Razão Social *</Label>
                 <Input
@@ -257,7 +257,7 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="document">CPF/CNPJ</Label>
                 <Input
@@ -292,7 +292,7 @@ export function ClientsPage() {
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="city">Cidade</Label>
                 <Input
@@ -319,7 +319,7 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="notes">Observações</Label>
                 <Textarea

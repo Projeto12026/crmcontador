@@ -102,15 +102,36 @@ serve(async (req) => {
   }
 
   try {
-    const GCLICK_APP_KEY = Deno.env.get('GCLICK_APP_KEY');
-    const GCLICK_APP_SECRET = Deno.env.get('GCLICK_APP_SECRET');
-    
-    if (!GCLICK_APP_KEY || !GCLICK_APP_SECRET) {
-      throw new Error('Credenciais G-Click não configuradas');
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Try env vars first, then fall back to settings table
+    let GCLICK_APP_KEY = Deno.env.get('GCLICK_APP_KEY');
+    let GCLICK_APP_SECRET = Deno.env.get('GCLICK_APP_SECRET');
+    
+    if (!GCLICK_APP_KEY || !GCLICK_APP_SECRET) {
+      console.log('Env vars not found, checking settings table...');
+      const settingsRes = await fetch(
+        `${supabaseUrl}/rest/v1/settings?key=eq.gclick_credentials&select=value`,
+        {
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apikey': supabaseKey,
+          },
+        }
+      );
+      if (settingsRes.ok) {
+        const rows = await settingsRes.json();
+        if (rows.length > 0 && rows[0].value) {
+          GCLICK_APP_KEY = rows[0].value.app_key || GCLICK_APP_KEY;
+          GCLICK_APP_SECRET = rows[0].value.app_secret || GCLICK_APP_SECRET;
+        }
+      }
+    }
+    
+    if (!GCLICK_APP_KEY || !GCLICK_APP_SECRET) {
+      throw new Error('Credenciais G-Click não configuradas. Configure na página de Configurações.');
+    }
 
     const body = await req.json().catch(() => ({}));
     const { type = 'folha_pagamento' } = body;
