@@ -312,6 +312,7 @@ export function SettingsPage() {
               <li>Tarefas, processos e templates</li>
               <li>Leads e atividades comerciais</li>
               <li>Obrigações de folha de pagamento</li>
+              <li>Precificação: catálogo de serviços e propostas</li>
               <li>Configurações do sistema</li>
             </ul>
           </div>
