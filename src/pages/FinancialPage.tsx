@@ -86,7 +86,7 @@ export function FinancialPage() {
     endDate: dashboardFilter.endDate,
   });
 
-  const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
   const { data: clients } = useClients();
 
   // Filtrar transações localmente para filtros que não estão na query
@@ -126,6 +126,38 @@ export function FinancialPage() {
       return true;
     });
   }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status, filters.searchTerm]);
+
+  // Recalcular summary a partir das transações filtradas quando há filtros locais ativos
+  const hasLocalFilters = filters.groupNumber || filters.status || filters.searchTerm;
+  const summary = useMemo(() => {
+    if (!hasLocalFilters) return rawSummary;
+    if (!filteredTransactions.length) return rawSummary;
+
+    const result = {
+      totalIncome: 0, totalExpense: 0, balance: 0,
+      projectedIncome: 0, projectedExpense: 0,
+      executedIncome: 0, executedExpense: 0, executedBalance: 0,
+      transactionCount: filteredTransactions.length,
+    };
+
+    filteredTransactions.forEach(tx => {
+      const income = Number(tx.income || 0);
+      const expense = Number(tx.expense || 0);
+      const futureIncome = Number(tx.future_income || 0);
+      const futureExpense = Number(tx.future_expense || 0);
+
+      result.executedIncome += income;
+      result.executedExpense += expense;
+      result.projectedIncome += futureIncome;
+      result.projectedExpense += futureExpense;
+      result.totalIncome += income + futureIncome;
+      result.totalExpense += expense + futureExpense;
+    });
+
+    result.balance = result.totalIncome - result.totalExpense;
+    result.executedBalance = result.executedIncome - result.executedExpense;
+    return result;
+  }, [hasLocalFilters, rawSummary, filteredTransactions]);
 
   const resetFilters = () => {
     setFilters({
