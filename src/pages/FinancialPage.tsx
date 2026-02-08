@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark } from 'lucide-react';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
@@ -23,6 +23,7 @@ import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/C
 import { FinancialDashboardView } from '@/components/financial/FinancialDashboardView';
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
+import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -238,6 +239,10 @@ export function FinancialPage() {
             <CalendarClock className="h-4 w-4" />
             Parceladas
           </TabsTrigger>
+          <TabsTrigger value="financial-accounts" className="gap-2">
+            <Landmark className="h-4 w-4" />
+            Contas
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 mt-4">
@@ -363,6 +368,10 @@ export function FinancialPage() {
             transactions={allTransactions || []}
             isLoading={loadingAll}
           />
+        </TabsContent>
+
+        <TabsContent value="financial-accounts" className="space-y-6 mt-4">
+          <FinancialAccountsManager />
         </TabsContent>
 
       {/* Dialog de novo/editar lançamento */}
