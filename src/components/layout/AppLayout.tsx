@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import {
   Sidebar,
@@ -32,7 +33,6 @@ import {
   ClipboardList,
   LogOut,
   Loader2,
-  Menu,
 } from 'lucide-react';
 
 interface NavItem {
@@ -62,6 +62,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isLoading, signOut, isAuthenticated } = useAuth();
+  const isMobile = useIsMobile();
 
   if (isLoading) {
     return (
@@ -81,7 +82,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider key={isMobile ? 'mobile' : 'desktop'}>
       <Sidebar collapsible="icon">
         <SidebarHeader className="border-b border-sidebar-border">
           <div className="flex h-14 items-center gap-2 px-2 md:h-12">
