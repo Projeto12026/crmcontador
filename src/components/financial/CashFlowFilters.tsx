@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { X } from 'lucide-react';
+import { X, Search } from 'lucide-react';
 
 export type TransactionStatus = 'all' | 'projected' | 'executed' | 'mixed';
 
@@ -22,6 +22,7 @@ export interface CashFlowFiltersValues {
   accountId?: string;
   financialAccountId?: string;
   status?: TransactionStatus;
+  searchTerm?: string;
 }
 
 interface CashFlowFiltersProps {
@@ -56,7 +57,8 @@ export function CashFlowFilters({
     filters.groupNumber || 
     filters.accountId || 
     filters.financialAccountId ||
-    filters.status;
+    filters.status ||
+    filters.searchTerm;
 
   return (
     <Card>
@@ -187,6 +189,20 @@ export function CashFlowFilters({
                 <SelectItem value="mixed">Misto</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Pesquisa */}
+          <div className="space-y-2">
+            <Label>Pesquisar</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Descrição ou valor..."
+                value={filters.searchTerm || ''}
+                onChange={(e) => updateFilter('searchTerm', e.target.value || undefined)}
+                className="pl-9 w-[200px]"
+              />
+            </div>
           </div>
 
           {/* Botão limpar filtros */}

@@ -112,9 +112,18 @@ export function FinancialPage() {
         if (filters.status === 'mixed' && !(hasFuture && hasExecuted)) return false;
       }
       
+      // Filtro por pesquisa (descrição ou valor)
+      if (filters.searchTerm) {
+        const term = filters.searchTerm.toLowerCase();
+        const matchDescription = tx.description.toLowerCase().includes(term);
+        const matchValue = tx.value.toString().includes(term);
+        const matchOrigin = tx.origin_destination?.toLowerCase().includes(term);
+        if (!matchDescription && !matchValue && !matchOrigin) return false;
+      }
+      
       return true;
     });
-  }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status]);
+  }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status, filters.searchTerm]);
 
   const resetFilters = () => {
     setFilters({
