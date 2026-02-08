@@ -13,6 +13,7 @@ import { useServiceCatalog, useCreatePricingProposal, PricingServiceCatalog } fr
 import { useClients } from '@/hooks/useClients';
 import { PricingCostConfig, CostConfig, getDefaultCostConfig } from './PricingCostConfig';
 import { ClientDiagnostic, DiagnosticData, computeComplexityScore, getDefaultDiagnostic } from './ClientDiagnostic';
+import { ClientProfitability } from './ClientProfitability';
 
 const DEPARTMENTS: Record<string, string> = {
   contabil: 'Contábil',
@@ -165,8 +166,14 @@ export function PricingSimulator() {
           <PricingCostConfig config={costConfig} onChange={setCostConfig} />
         </TabsContent>
 
-        <TabsContent value="diagnostic">
+        <TabsContent value="diagnostic" className="space-y-4">
           <ClientDiagnostic data={diagnostic} onChange={setDiagnostic} clients={clients} />
+          <ClientProfitability
+            clientId={diagnostic.clientId}
+            clientName={diagnostic.clientName}
+            calculatedIdealPrice={grandTotal}
+            hasServicesSelected={activeServices.length > 0}
+          />
         </TabsContent>
 
         <TabsContent value="services">
