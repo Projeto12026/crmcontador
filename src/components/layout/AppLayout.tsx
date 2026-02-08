@@ -82,7 +82,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   return (
-    <SidebarProvider key={isMobile ? 'mobile' : 'desktop'}>
+    <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="border-b border-sidebar-border">
           <div className="flex h-14 items-center gap-2 px-2 md:h-12">
