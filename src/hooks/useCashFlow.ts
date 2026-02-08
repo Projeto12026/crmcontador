@@ -10,6 +10,7 @@ export function useCashFlowTransactions(filters?: {
   endDate?: string;
   accountId?: string;
   type?: TransactionType;
+  financialAccountId?: string;
 }) {
   return useQuery({
     queryKey: ['cash_flow_transactions', filters],
@@ -36,6 +37,9 @@ export function useCashFlowTransactions(filters?: {
       if (filters?.type) {
         query = query.eq('type', filters.type);
       }
+      if (filters?.financialAccountId) {
+        query = query.eq('financial_account_id', filters.financialAccountId);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -51,12 +55,12 @@ export function useCashFlowTransactions(filters?: {
 }
 
 // Resumo do fluxo de caixa por período
-export function useCashFlowSummary(startDate: string, endDate: string) {
+export function useCashFlowSummary(startDate: string, endDate: string, financialAccountId?: string) {
   return useQuery({
-    queryKey: ['cash_flow_summary', startDate, endDate],
+    queryKey: ['cash_flow_summary', startDate, endDate, financialAccountId],
     queryFn: async () => {
       // Buscar transações do período, excluindo grupos 7 e 8
-      const { data: transactions, error } = await supabase
+      let query = supabase
         .from('cash_flow_transactions')
         .select(`
           income, expense, future_income, future_expense,
@@ -64,6 +68,12 @@ export function useCashFlowSummary(startDate: string, endDate: string) {
         `)
         .gte('date', startDate)
         .lte('date', endDate);
+
+      if (financialAccountId) {
+        query = query.eq('financial_account_id', financialAccountId);
+      }
+
+      const { data: transactions, error } = await query;
 
       if (error) throw error;
 
