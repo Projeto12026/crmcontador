@@ -1,8 +1,9 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calculator, BookOpen, FileText } from 'lucide-react';
+import { Calculator, BookOpen, FileText, BarChart3 } from 'lucide-react';
 import { ServiceCatalogManager } from '@/components/pricing/ServiceCatalogManager';
 import { PricingSimulator } from '@/components/pricing/PricingSimulator';
 import { ProposalsList } from '@/components/pricing/ProposalsList';
+import { PricingIndicators } from '@/components/pricing/PricingIndicators';
 
 export function PricingPage() {
   return (
@@ -10,7 +11,7 @@ export function PricingPage() {
       <div>
         <h1 className="text-2xl font-bold sm:text-3xl">Precificação de Honorários</h1>
         <p className="text-sm text-muted-foreground">
-          Metodologia baseada em custo-hora, complexidade do cliente e catálogo de serviços
+          Metodologia baseada em custo-hora por departamento, markup detalhado, diagnóstico de complexidade e catálogo de serviços
         </p>
       </div>
 
@@ -28,6 +29,10 @@ export function PricingPage() {
             <FileText className="h-4 w-4" />
             Propostas
           </TabsTrigger>
+          <TabsTrigger value="indicators" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Indicadores
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="simulator" className="mt-4">
@@ -40,6 +45,10 @@ export function PricingPage() {
 
         <TabsContent value="proposals" className="mt-4">
           <ProposalsList />
+        </TabsContent>
+
+        <TabsContent value="indicators" className="mt-4">
+          <PricingIndicators />
         </TabsContent>
       </Tabs>
     </div>

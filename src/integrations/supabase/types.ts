@@ -794,6 +794,7 @@ export type Database = {
         Row: {
           created_at: string
           department: string
+          department_hourly_cost: number | null
           hourly_rate: number
           hours_per_month: number
           id: string
@@ -802,10 +803,12 @@ export type Database = {
           proposal_id: string
           service_catalog_id: string | null
           service_name: string
+          service_type: string | null
         }
         Insert: {
           created_at?: string
           department?: string
+          department_hourly_cost?: number | null
           hourly_rate?: number
           hours_per_month?: number
           id?: string
@@ -814,10 +817,12 @@ export type Database = {
           proposal_id: string
           service_catalog_id?: string | null
           service_name: string
+          service_type?: string | null
         }
         Update: {
           created_at?: string
           department?: string
+          department_hourly_cost?: number | null
           hourly_rate?: number
           hours_per_month?: number
           id?: string
@@ -826,6 +831,7 @@ export type Database = {
           proposal_id?: string
           service_catalog_id?: string | null
           service_name?: string
+          service_type?: string | null
         }
         Relationships: [
           {
@@ -848,14 +854,26 @@ export type Database = {
         Row: {
           client_id: string | null
           client_name: string | null
+          company_type: string | null
+          complexity_score: number | null
           created_at: string
+          fiscal_complexity: string | null
+          has_digital_certificate: boolean | null
           hourly_cost: number
           id: string
+          markup_civil_liability: number | null
+          markup_interest: number | null
+          markup_pdd: number | null
           markup_percentage: number
+          markup_profit: number | null
+          markup_taxes: number | null
           monthly_revenue: number | null
           notes: string | null
+          num_branches: number | null
           num_employees: number | null
           num_monthly_invoices: number | null
+          revenue_bracket: string | null
+          sellable_hours_month: number | null
           status: string
           tax_regime: string | null
           total_monthly_value: number
@@ -864,14 +882,26 @@ export type Database = {
         Insert: {
           client_id?: string | null
           client_name?: string | null
+          company_type?: string | null
+          complexity_score?: number | null
           created_at?: string
+          fiscal_complexity?: string | null
+          has_digital_certificate?: boolean | null
           hourly_cost?: number
           id?: string
+          markup_civil_liability?: number | null
+          markup_interest?: number | null
+          markup_pdd?: number | null
           markup_percentage?: number
+          markup_profit?: number | null
+          markup_taxes?: number | null
           monthly_revenue?: number | null
           notes?: string | null
+          num_branches?: number | null
           num_employees?: number | null
           num_monthly_invoices?: number | null
+          revenue_bracket?: string | null
+          sellable_hours_month?: number | null
           status?: string
           tax_regime?: string | null
           total_monthly_value?: number
@@ -880,14 +910,26 @@ export type Database = {
         Update: {
           client_id?: string | null
           client_name?: string | null
+          company_type?: string | null
+          complexity_score?: number | null
           created_at?: string
+          fiscal_complexity?: string | null
+          has_digital_certificate?: boolean | null
           hourly_cost?: number
           id?: string
+          markup_civil_liability?: number | null
+          markup_interest?: number | null
+          markup_pdd?: number | null
           markup_percentage?: number
+          markup_profit?: number | null
+          markup_taxes?: number | null
           monthly_revenue?: number | null
           notes?: string | null
+          num_branches?: number | null
           num_employees?: number | null
           num_monthly_invoices?: number | null
+          revenue_bracket?: string | null
+          sellable_hours_month?: number | null
           status?: string
           tax_regime?: string | null
           total_monthly_value?: number
@@ -912,6 +954,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          service_type: string
           updated_at: string
         }
         Insert: {
@@ -922,6 +965,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          service_type?: string
           updated_at?: string
         }
         Update: {
@@ -932,6 +976,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          service_type?: string
           updated_at?: string
         }
         Relationships: []

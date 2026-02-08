@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Calculator, Save, Loader2, Clock, DollarSign, Percent, Users, FileText, Building2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Calculator, Save, Loader2, Clock, DollarSign, Zap } from 'lucide-react';
 import { useServiceCatalog, useCreatePricingProposal, PricingServiceCatalog } from '@/hooks/usePricing';
 import { useClients } from '@/hooks/useClients';
+import { PricingCostConfig, CostConfig, getDefaultCostConfig } from './PricingCostConfig';
+import { ClientDiagnostic, DiagnosticData, computeComplexityScore, getDefaultDiagnostic } from './ClientDiagnostic';
 
 const DEPARTMENTS: Record<string, string> = {
   contabil: 'Contábil',
@@ -20,12 +22,11 @@ const DEPARTMENTS: Record<string, string> = {
   consultoria: 'Consultoria',
 };
 
-const TAX_REGIMES = [
-  { value: 'mei', label: 'MEI' },
-  { value: 'simples', label: 'Simples Nacional' },
-  { value: 'lucro_presumido', label: 'Lucro Presumido' },
-  { value: 'lucro_real', label: 'Lucro Real' },
-];
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  recurring: 'Recorrente',
+  annual: 'Anual',
+  one_time: 'Pontual',
+};
 
 interface SelectedService {
   catalog_id: string;
@@ -33,6 +34,7 @@ interface SelectedService {
   department: string;
   hours: number;
   selected: boolean;
+  serviceType: string;
 }
 
 export function PricingSimulator() {
@@ -41,21 +43,15 @@ export function PricingSimulator() {
   const createProposal = useCreatePricingProposal();
 
   // Config
-  const [hourlyCost, setHourlyCost] = useState(80);
-  const [markupPct, setMarkupPct] = useState(30);
+  const [costConfig, setCostConfig] = useState<CostConfig>(getDefaultCostConfig);
 
-  // Client info
-  const [clientId, setClientId] = useState<string>('');
-  const [clientName, setClientName] = useState('');
-  const [taxRegime, setTaxRegime] = useState('simples');
-  const [numEmployees, setNumEmployees] = useState(0);
-  const [numInvoices, setNumInvoices] = useState(0);
-  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
-  const [notes, setNotes] = useState('');
+  // Diagnostic
+  const [diagnostic, setDiagnostic] = useState<DiagnosticData>(getDefaultDiagnostic);
 
   // Services
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [initialized, setInitialized] = useState(false);
+  const [notes, setNotes] = useState('');
 
   // Initialize services from catalog
   if (catalog && !initialized) {
@@ -66,12 +62,20 @@ export function PricingSimulator() {
         department: s.department,
         hours: s.default_hours_per_month,
         selected: false,
+        serviceType: (s as any).service_type || 'recurring',
       }))
     );
     setInitialized(true);
   }
 
-  const hourlyRate = hourlyCost * (1 + markupPct / 100);
+  const totalMarkup = costConfig.markup.taxes + costConfig.markup.civilLiability + costConfig.markup.pdd + costConfig.markup.interest + costConfig.markup.profit;
+
+  // Get hourly rate per department
+  const getDeptHourlyRate = (dept: string): number => {
+    const deptConfig = costConfig.departments[dept];
+    if (!deptConfig) return 100;
+    return deptConfig.costPerHour * (1 + totalMarkup / 100);
+  };
 
   const toggleService = (index: number) => {
     setSelectedServices(prev => prev.map((s, i) => i === index ? { ...s, selected: !s.selected } : s));
@@ -82,34 +86,27 @@ export function PricingSimulator() {
   };
 
   const activeServices = selectedServices.filter(s => s.selected);
-  const totalHours = activeServices.reduce((sum, s) => sum + s.hours, 0);
-  const totalValue = totalHours * hourlyRate;
+  const recurringServices = activeServices.filter(s => s.serviceType === 'recurring');
+  const extraServices = activeServices.filter(s => s.serviceType !== 'recurring');
+
+  const totalRecurringHours = recurringServices.reduce((sum, s) => sum + s.hours, 0);
+  const totalRecurringValue = recurringServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department), 0);
+  const totalExtraValue = extraServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department), 0);
+
+  const complexityScore = computeComplexityScore(diagnostic);
+  const adjustedRecurringTotal = totalRecurringValue * complexityScore;
+  const adjustedExtraTotal = totalExtraValue * complexityScore;
+  const grandTotal = adjustedRecurringTotal + adjustedExtraTotal;
 
   const byDepartment = useMemo(() => {
     const grouped: Record<string, { hours: number; value: number }> = {};
     activeServices.forEach(s => {
       if (!grouped[s.department]) grouped[s.department] = { hours: 0, value: 0 };
       grouped[s.department].hours += s.hours;
-      grouped[s.department].value += s.hours * hourlyRate;
+      grouped[s.department].value += s.hours * getDeptHourlyRate(s.department);
     });
     return grouped;
-  }, [activeServices, hourlyRate]);
-
-  // Complexity multiplier based on client data
-  const complexityMultiplier = useMemo(() => {
-    let mult = 1;
-    if (taxRegime === 'lucro_real') mult *= 1.4;
-    else if (taxRegime === 'lucro_presumido') mult *= 1.2;
-    else if (taxRegime === 'mei') mult *= 0.6;
-    if (numEmployees > 50) mult *= 1.3;
-    else if (numEmployees > 20) mult *= 1.15;
-    else if (numEmployees > 5) mult *= 1.05;
-    if (numInvoices > 200) mult *= 1.25;
-    else if (numInvoices > 50) mult *= 1.1;
-    return mult;
-  }, [taxRegime, numEmployees, numInvoices]);
-
-  const adjustedTotal = totalValue * complexityMultiplier;
+  }, [activeServices, costConfig, totalMarkup]);
 
   const handleSave = () => {
     const items = activeServices.map(s => ({
@@ -117,21 +114,21 @@ export function PricingSimulator() {
       service_name: s.name,
       department: s.department,
       hours_per_month: s.hours,
-      hourly_rate: hourlyRate,
-      monthly_value: s.hours * hourlyRate * complexityMultiplier,
+      hourly_rate: getDeptHourlyRate(s.department),
+      monthly_value: s.hours * getDeptHourlyRate(s.department) * complexityScore,
     }));
 
-    const selectedClient = clients?.find(c => c.id === clientId);
+    const selectedClient = clients?.find(c => c.id === diagnostic.clientId);
 
     createProposal.mutate({
-      client_id: clientId || null,
-      client_name: clientId ? selectedClient?.name || '' : clientName,
-      tax_regime: taxRegime,
-      num_employees: numEmployees,
-      num_monthly_invoices: numInvoices,
-      monthly_revenue: monthlyRevenue,
-      hourly_cost: hourlyCost,
-      markup_percentage: markupPct,
+      client_id: diagnostic.clientId || null,
+      client_name: diagnostic.clientId ? selectedClient?.name || '' : diagnostic.clientName,
+      tax_regime: diagnostic.taxRegime,
+      num_employees: diagnostic.numEmployees,
+      num_monthly_invoices: diagnostic.numInvoices,
+      monthly_revenue: diagnostic.monthlyRevenue,
+      hourly_cost: Object.values(costConfig.departments).reduce((sum, d) => sum + d.costPerHour, 0) / Object.keys(costConfig.departments).length,
+      markup_percentage: totalMarkup,
       notes,
       items,
     });
@@ -147,196 +144,173 @@ export function PricingSimulator() {
 
   return (
     <div className="space-y-6">
-      {/* Config + Client info side by side */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Configuração de Custo */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calculator className="h-4 w-4" />
-              Configuração de Custo
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <DollarSign className="h-3.5 w-3.5" />
-                  Custo/Hora (R$)
-                </Label>
-                <Input type="number" min={1} value={hourlyCost} onChange={e => setHourlyCost(Number(e.target.value))} />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <Percent className="h-3.5 w-3.5" />
-                  Markup (%)
-                </Label>
-                <Input type="number" min={0} value={markupPct} onChange={e => setMarkupPct(Number(e.target.value))} />
-              </div>
-            </div>
-            <div className="rounded-lg bg-muted p-3">
-              <p className="text-sm text-muted-foreground">Valor Hora Cobrado</p>
-              <p className="text-2xl font-bold">R$ {hourlyRate.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Step 1: Configuração de Custos */}
+      <Tabs defaultValue="diagnostic" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="config" className="gap-2">
+            <Calculator className="h-4 w-4" />
+            1. Custos & Markup
+          </TabsTrigger>
+          <TabsTrigger value="diagnostic" className="gap-2">
+            <Zap className="h-4 w-4" />
+            2. Diagnóstico
+          </TabsTrigger>
+          <TabsTrigger value="services" className="gap-2">
+            <Clock className="h-4 w-4" />
+            3. Serviços
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Dados do Cliente */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Dados do Cliente
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label>Cliente (opcional)</Label>
-              <Select value={clientId} onValueChange={v => { setClientId(v); setClientName(''); }}>
-                <SelectTrigger><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum (informar nome)</SelectItem>
-                  {clients?.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {(!clientId || clientId === 'none') && (
-              <div className="space-y-2">
-                <Label>Nome do Cliente</Label>
-                <Input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Nome da empresa..." />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Regime Tributário</Label>
-                <Select value={taxRegime} onValueChange={setTaxRegime}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TAX_REGIMES.map(r => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <Users className="h-3.5 w-3.5" />
-                  Nº Funcionários
-                </Label>
-                <Input type="number" min={0} value={numEmployees} onChange={e => setNumEmployees(Number(e.target.value))} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <FileText className="h-3.5 w-3.5" />
-                  NFs/Mês
-                </Label>
-                <Input type="number" min={0} value={numInvoices} onChange={e => setNumInvoices(Number(e.target.value))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Faturamento/Mês (R$)</Label>
-                <Input type="number" min={0} value={monthlyRevenue} onChange={e => setMonthlyRevenue(Number(e.target.value))} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="config">
+          <PricingCostConfig config={costConfig} onChange={setCostConfig} />
+        </TabsContent>
 
-      {/* Seleção de Serviços */}
-      <Card>
+        <TabsContent value="diagnostic">
+          <ClientDiagnostic data={diagnostic} onChange={setDiagnostic} clients={clients} />
+        </TabsContent>
+
+        <TabsContent value="services">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Ficha Técnica de Serviços
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(DEPARTMENTS).map(([key, label]) => {
+                const items = groupedCatalog[key];
+                if (!items || items.length === 0) return null;
+                const deptRate = getDeptHourlyRate(key);
+                return (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold">{label}</h4>
+                      <Badge variant="outline" className="text-xs">
+                        R$ {deptRate.toFixed(0)}/h
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {items.map(({ index, service }) => (
+                        <div key={index} className="flex items-center gap-3 rounded-lg border p-2">
+                          <Checkbox
+                            checked={service.selected}
+                            onCheckedChange={() => toggleService(index)}
+                          />
+                          <span className="flex-1 text-sm">{service.name}</span>
+                          {service.serviceType !== 'recurring' && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {SERVICE_TYPE_LABELS[service.serviceType] || service.serviceType}
+                            </Badge>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0.5}
+                              step={0.5}
+                              value={service.hours}
+                              onChange={e => updateHours(index, Number(e.target.value))}
+                              className="w-16 h-8 text-xs"
+                              disabled={!service.selected}
+                            />
+                            <span className="text-xs text-muted-foreground">h</span>
+                          </div>
+                          {service.selected && (
+                            <span className="text-xs font-medium w-20 text-right">
+                              R$ {(service.hours * deptRate).toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Resultado Final - Always visible */}
+      <Card className="border-primary/30">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Serviços (Ficha Técnica)
+            <DollarSign className="h-4 w-4" />
+            Resumo da Proposta
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {Object.entries(DEPARTMENTS).map(([key, label]) => {
-            const items = groupedCatalog[key];
-            if (!items || items.length === 0) return null;
-            return (
-              <div key={key}>
-                <h4 className="text-sm font-semibold mb-2">{label}</h4>
-                <div className="space-y-1">
-                  {items.map(({ index, service }) => (
-                    <div key={index} className="flex items-center gap-3 rounded-lg border p-2">
-                      <Checkbox
-                        checked={service.selected}
-                        onCheckedChange={() => toggleService(index)}
-                      />
-                      <span className="flex-1 text-sm">{service.name}</span>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min={0.5}
-                          step={0.5}
-                          value={service.hours}
-                          onChange={e => updateHours(index, Number(e.target.value))}
-                          className="w-16 h-8 text-xs"
-                          disabled={!service.selected}
-                        />
-                        <span className="text-xs text-muted-foreground">h/mês</span>
-                      </div>
-                      {service.selected && (
-                        <span className="text-xs font-medium w-20 text-right">
-                          R$ {(service.hours * hourlyRate).toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* Resultado */}
-      <Card className="border-primary/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Resumo da Proposta</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
           {/* Por departamento */}
-          {Object.entries(byDepartment).map(([dept, data]) => (
-            <div key={dept} className="flex items-center justify-between text-sm">
-              <span>{DEPARTMENTS[dept] || dept}</span>
-              <span className="text-muted-foreground">{data.hours}h</span>
-              <span className="font-medium">R$ {data.value.toFixed(2)}</span>
-            </div>
-          ))}
+          {Object.entries(byDepartment).length > 0 ? (
+            <>
+              {Object.entries(byDepartment).map(([dept, data]) => (
+                <div key={dept} className="flex items-center justify-between text-sm">
+                  <span>{DEPARTMENTS[dept] || dept}</span>
+                  <span className="text-muted-foreground">{data.hours}h × R$ {getDeptHourlyRate(dept).toFixed(0)}</span>
+                  <span className="font-medium">R$ {data.value.toFixed(2)}</span>
+                </div>
+              ))}
+              <Separator />
 
-          <Separator />
+              {/* Subtotals */}
+              {recurringServices.length > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span>Serviços Recorrentes ({totalRecurringHours}h)</span>
+                  <span className="font-medium">R$ {totalRecurringValue.toFixed(2)}</span>
+                </div>
+              )}
+              {extraServices.length > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1">
+                    Serviços Extras/Pontuais
+                    <Badge variant="secondary" className="text-[10px]">{extraServices.length}</Badge>
+                  </span>
+                  <span className="font-medium">R$ {totalExtraValue.toFixed(2)}</span>
+                </div>
+              )}
 
-          <div className="flex items-center justify-between text-sm">
-            <span>Subtotal ({totalHours}h)</span>
-            <span className="font-medium">R$ {totalValue.toFixed(2)}</span>
-          </div>
+              {complexityScore !== 1 && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Fator de complexidade (score: {complexityScore.toFixed(2)}x)
+                    </span>
+                    <span className="text-muted-foreground">
+                      {complexityScore > 1 ? '+' : '-'} R$ {Math.abs(grandTotal - totalRecurringValue - totalExtraValue).toFixed(2)}
+                    </span>
+                  </div>
+                </>
+              )}
 
-          {complexityMultiplier !== 1 && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                Fator de complexidade ({(complexityMultiplier * 100 - 100).toFixed(0)}%)
-              </span>
-              <span className="text-muted-foreground">
-                {complexityMultiplier > 1 ? '+' : '-'} R$ {Math.abs(adjustedTotal - totalValue).toFixed(2)}
-              </span>
-            </div>
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-bold">Honorário Mensal</span>
+                <span className="text-2xl font-bold text-primary">R$ {adjustedRecurringTotal.toFixed(2)}</span>
+              </div>
+
+              {extraServices.length > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">+ Serviços Extras</span>
+                  <span className="font-medium">R$ {adjustedExtraTotal.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 flex items-center justify-between">
+                <span className="font-bold">Total Geral</span>
+                <span className="text-2xl font-bold text-primary">R$ {grandTotal.toFixed(2)}</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Selecione serviços na aba "3. Serviços" para ver o resumo
+            </p>
           )}
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-bold">Honorário Mensal</span>
-            <span className="text-2xl font-bold text-primary">R$ {adjustedTotal.toFixed(2)}</span>
-          </div>
 
           <div className="space-y-2">
             <Label>Observações</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas sobre a proposta..." />
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas sobre a proposta, condições especiais..." />
           </div>
 
           <Button onClick={handleSave} disabled={activeServices.length === 0 || createProposal.isPending} className="w-full">
