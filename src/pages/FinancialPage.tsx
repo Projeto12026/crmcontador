@@ -66,6 +66,7 @@ export function FinancialPage() {
     endDate: filters.endDate,
     accountId: filters.accountId,
     type: filters.type,
+    financialAccountId: filters.financialAccountId,
   });
   
   // Transações para projeção (período estendido)
@@ -84,7 +85,7 @@ export function FinancialPage() {
     endDate: dashboardFilter.endDate,
   });
 
-  const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate);
+  const { data: summary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
   const { data: clients } = useClients();
 
   // Filtrar transações localmente para filtros que não estão na query
