@@ -947,33 +947,39 @@ export type Database = {
       }
       pricing_service_catalog: {
         Row: {
+          additional_employee_value: number | null
           created_at: string
           default_hours_per_month: number
           department: string
           description: string | null
           id: string
+          included_employees: number | null
           is_active: boolean
           name: string
           service_type: string
           updated_at: string
         }
         Insert: {
+          additional_employee_value?: number | null
           created_at?: string
           default_hours_per_month?: number
           department?: string
           description?: string | null
           id?: string
+          included_employees?: number | null
           is_active?: boolean
           name: string
           service_type?: string
           updated_at?: string
         }
         Update: {
+          additional_employee_value?: number | null
           created_at?: string
           default_hours_per_month?: number
           department?: string
           description?: string | null
           id?: string
+          included_employees?: number | null
           is_active?: boolean
           name?: string
           service_type?: string

@@ -38,11 +38,11 @@ export function ServiceCatalogManager() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PricingServiceCatalog | null>(null);
-  const [form, setForm] = useState({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring' });
+  const [form, setForm] = useState({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring', included_employees: null as number | null, additional_employee_value: null as number | null });
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring' });
+    setForm({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring', included_employees: null, additional_employee_value: null });
     setDialogOpen(true);
   };
 
@@ -54,6 +54,8 @@ export function ServiceCatalogManager() {
       description: item.description || '',
       default_hours_per_month: item.default_hours_per_month,
       service_type: (item as any).service_type || 'recurring',
+      included_employees: item.included_employees,
+      additional_employee_value: item.additional_employee_value,
     });
     setDialogOpen(true);
   };
@@ -118,6 +120,11 @@ export function ServiceCatalogManager() {
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {item.default_hours_per_month}h
                         </span>
+                        {item.included_employees != null && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {item.included_employees} func. + R$ {item.additional_employee_value?.toFixed(0)}/adic.
+                          </Badge>
+                        )}
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(item)}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
@@ -175,6 +182,35 @@ export function ServiceCatalogManager() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
+              <Label className="text-xs font-semibold text-muted-foreground">Regra de Funcionários Adicionais</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Funcionários Inclusos</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Ex: 3"
+                    value={form.included_employees ?? ''}
+                    onChange={e => setForm(f => ({ ...f, included_employees: e.target.value ? Number(e.target.value) : null }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor por Adicional (R$)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    placeholder="Ex: 50,00"
+                    value={form.additional_employee_value ?? ''}
+                    onChange={e => setForm(f => ({ ...f, additional_employee_value: e.target.value ? Number(e.target.value) : null }))}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Deixe em branco se este serviço não cobra por funcionário adicional.
+              </p>
             </div>
           </div>
           <DialogFooter>
