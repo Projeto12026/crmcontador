@@ -36,6 +36,9 @@ interface SelectedService {
   hours: number;
   selected: boolean;
   serviceType: string;
+  included_employees: number | null;
+  additional_employee_value: number | null;
+  num_employees: number;
 }
 
 export function PricingSimulator() {
@@ -64,6 +67,9 @@ export function PricingSimulator() {
         hours: s.default_hours_per_month,
         selected: false,
         serviceType: (s as any).service_type || 'recurring',
+        included_employees: s.included_employees,
+        additional_employee_value: s.additional_employee_value,
+        num_employees: 0,
       }))
     );
     setInitialized(true);
@@ -86,13 +92,22 @@ export function PricingSimulator() {
     setSelectedServices(prev => prev.map((s, i) => i === index ? { ...s, hours } : s));
   };
 
+  const updateNumEmployees = (index: number, num: number) => {
+    setSelectedServices(prev => prev.map((s, i) => i === index ? { ...s, num_employees: num } : s));
+  };
+
+  const getAdditionalEmployeeCost = (s: SelectedService): number => {
+    if (!s.included_employees || !s.additional_employee_value || s.num_employees <= s.included_employees) return 0;
+    return (s.num_employees - s.included_employees) * s.additional_employee_value;
+  };
+
   const activeServices = selectedServices.filter(s => s.selected);
   const recurringServices = activeServices.filter(s => s.serviceType === 'recurring');
   const extraServices = activeServices.filter(s => s.serviceType !== 'recurring');
 
   const totalRecurringHours = recurringServices.reduce((sum, s) => sum + s.hours, 0);
-  const totalRecurringValue = recurringServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department), 0);
-  const totalExtraValue = extraServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department), 0);
+  const totalRecurringValue = recurringServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s), 0);
+  const totalExtraValue = extraServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s), 0);
 
   const complexityScore = computeComplexityScore(diagnostic);
   const adjustedRecurringTotal = totalRecurringValue * complexityScore;
@@ -104,6 +119,7 @@ export function PricingSimulator() {
     activeServices.forEach(s => {
       if (!grouped[s.department]) grouped[s.department] = { hours: 0, value: 0 };
       grouped[s.department].hours += s.hours;
+      grouped[s.department].value += s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s);
       grouped[s.department].value += s.hours * getDeptHourlyRate(s.department);
     });
     return grouped;
@@ -116,7 +132,7 @@ export function PricingSimulator() {
       department: s.department,
       hours_per_month: s.hours,
       hourly_rate: getDeptHourlyRate(s.department),
-      monthly_value: s.hours * getDeptHourlyRate(s.department) * complexityScore,
+      monthly_value: (s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s)) * complexityScore,
     }));
 
     const selectedClient = clients?.find(c => c.id === diagnostic.clientId);
@@ -198,37 +214,62 @@ export function PricingSimulator() {
                       </Badge>
                     </div>
                     <div className="space-y-1">
-                      {items.map(({ index, service }) => (
-                        <div key={index} className="flex items-center gap-3 rounded-lg border p-2">
-                          <Checkbox
-                            checked={service.selected}
-                            onCheckedChange={() => toggleService(index)}
-                          />
-                          <span className="flex-1 text-sm">{service.name}</span>
-                          {service.serviceType !== 'recurring' && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {SERVICE_TYPE_LABELS[service.serviceType] || service.serviceType}
-                            </Badge>
-                          )}
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              min={0.5}
-                              step={0.5}
-                              value={service.hours}
-                              onChange={e => updateHours(index, Number(e.target.value))}
-                              className="w-16 h-8 text-xs"
-                              disabled={!service.selected}
+                      {items.map(({ index, service }) => {
+                        const empCost = getAdditionalEmployeeCost(service);
+                        const lineTotal = service.hours * deptRate + empCost;
+                        return (
+                        <div key={index} className="rounded-lg border p-2 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={service.selected}
+                              onCheckedChange={() => toggleService(index)}
                             />
-                            <span className="text-xs text-muted-foreground">h</span>
+                            <span className="flex-1 text-sm">{service.name}</span>
+                            {service.serviceType !== 'recurring' && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {SERVICE_TYPE_LABELS[service.serviceType] || service.serviceType}
+                              </Badge>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min={0.5}
+                                step={0.5}
+                                value={service.hours}
+                                onChange={e => updateHours(index, Number(e.target.value))}
+                                className="w-16 h-8 text-xs"
+                                disabled={!service.selected}
+                              />
+                              <span className="text-xs text-muted-foreground">h</span>
+                            </div>
+                            {service.selected && (
+                              <span className="text-xs font-medium w-20 text-right">
+                                R$ {lineTotal.toFixed(0)}
+                              </span>
+                            )}
                           </div>
-                          {service.selected && (
-                            <span className="text-xs font-medium w-20 text-right">
-                              R$ {(service.hours * deptRate).toFixed(0)}
-                            </span>
+                          {service.selected && service.included_employees != null && (
+                            <div className="flex items-center gap-2 ml-7 text-xs text-muted-foreground">
+                              <span>Funcionários:</span>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={service.num_employees}
+                                onChange={e => updateNumEmployees(index, Number(e.target.value))}
+                                className="w-16 h-7 text-xs"
+                              />
+                              <span className="whitespace-nowrap">
+                                ({service.included_employees} inclusos
+                                {service.num_employees > service.included_employees
+                                  ? `, +${service.num_employees - service.included_employees} × R$ ${service.additional_employee_value?.toFixed(0)} = R$ ${empCost.toFixed(0)}`
+                                  : ''}
+                                )
+                              </span>
+                            </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );

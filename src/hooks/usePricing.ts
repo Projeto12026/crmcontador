@@ -9,6 +9,8 @@ export interface PricingServiceCatalog {
   description: string | null;
   default_hours_per_month: number;
   is_active: boolean;
+  included_employees: number | null;
+  additional_employee_value: number | null;
   created_at: string;
   updated_at: string;
 }
