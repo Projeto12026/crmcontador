@@ -1,6 +1,6 @@
 -- ============================================================
 -- BACKUP COMPLETO DO SCHEMA - CRM Contador
--- Gerado em: 2026-02-06
+-- Gerado em: 2026-02-08
 -- Supabase Project ID: rvekakbpmkemgiwkkdok
 -- URL: https://rvekakbpmkemgiwkkdok.supabase.co
 -- ============================================================
@@ -393,6 +393,65 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- 3.23 pricing_service_catalog
+CREATE TABLE IF NOT EXISTS public.pricing_service_catalog (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text NOT NULL,
+  description text,
+  department text NOT NULL DEFAULT 'Contábil',
+  service_type text NOT NULL DEFAULT 'recurring',
+  default_hours_per_month numeric NOT NULL DEFAULT 1,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 3.24 pricing_proposals
+CREATE TABLE IF NOT EXISTS public.pricing_proposals (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id uuid REFERENCES public.clients(id),
+  client_name text,
+  status text NOT NULL DEFAULT 'draft',
+  hourly_cost numeric NOT NULL DEFAULT 0,
+  markup_percentage numeric NOT NULL DEFAULT 0,
+  markup_taxes numeric,
+  markup_civil_liability numeric,
+  markup_pdd numeric,
+  markup_interest numeric,
+  markup_profit numeric,
+  total_monthly_value numeric NOT NULL DEFAULT 0,
+  tax_regime text,
+  company_type text,
+  num_employees integer,
+  num_monthly_invoices integer,
+  monthly_revenue numeric,
+  revenue_bracket text,
+  num_branches integer,
+  has_digital_certificate boolean,
+  fiscal_complexity text,
+  complexity_score numeric,
+  sellable_hours_month numeric,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 3.25 pricing_proposal_items
+CREATE TABLE IF NOT EXISTS public.pricing_proposal_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  proposal_id uuid NOT NULL REFERENCES public.pricing_proposals(id),
+  service_catalog_id uuid REFERENCES public.pricing_service_catalog(id),
+  service_name text NOT NULL,
+  service_type text,
+  department text NOT NULL DEFAULT 'Contábil',
+  hours_per_month numeric NOT NULL DEFAULT 0,
+  hourly_rate numeric NOT NULL DEFAULT 0,
+  department_hourly_cost numeric,
+  monthly_value numeric NOT NULL DEFAULT 0,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================
 -- 4. ÍNDICES
 -- ============================================================
@@ -436,6 +495,9 @@ ALTER TABLE public.process_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.processes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pricing_service_catalog ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pricing_proposals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pricing_proposal_items ENABLE ROW LEVEL SECURITY;
 
 -- Políticas permissivas (acesso total - mesma config atual)
 CREATE POLICY "Allow all access for account_categories" ON public.account_categories FOR ALL USING (true) WITH CHECK (true);
@@ -460,6 +522,9 @@ CREATE POLICY "Allow all access" ON public.process_templates FOR ALL USING (true
 CREATE POLICY "Allow all access" ON public.processes FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all access" ON public.settings FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all access" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access" ON public.pricing_service_catalog FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access" ON public.pricing_proposals FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access" ON public.pricing_proposal_items FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- 6. CONFIGURAÇÃO DO SUPABASE (config.toml)
@@ -473,6 +538,9 @@ CREATE POLICY "Allow all access" ON public.tasks FOR ALL USING (true) WITH CHECK
 -- verify_jwt = false
 --
 -- [functions.receive-task-from-zapier]
+-- verify_jwt = false
+--
+-- [functions.backup-data]
 -- verify_jwt = false
 
 -- ============================================================
