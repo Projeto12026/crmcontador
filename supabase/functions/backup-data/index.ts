@@ -27,6 +27,9 @@ const TABLES = [
   "onboarding_templates",
   "onboarding_template_items",
   "payroll_obligations",
+  "pricing_service_catalog",
+  "pricing_proposals",
+  "pricing_proposal_items",
   "settings",
 ];
 
