@@ -239,7 +239,16 @@ export const ACCOUNT_GROUPS = {
   6: 'Despesas',
   7: 'Banco/Caixa',
   8: 'Cartões de Crédito',
+  100: 'Despesa Nescon',
+  200: 'Despesas de Terceiros',
 } as const;
+
+/**
+ * Groups that are administrative/third-party and should be excluded from
+ * projections, installment tracking, and financial indicators.
+ * They only appear in the cash flow view.
+ */
+export const EXCLUDED_ACCOUNT_GROUPS = new Set([100, 200]);
 
 export type AccountGroupNumber = keyof typeof ACCOUNT_GROUPS;
 

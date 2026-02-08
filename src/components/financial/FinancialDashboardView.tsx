@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, TrendingDown, Clock, Wallet } from 'lucide-react';
-import { CashFlowTransaction } from '@/types/crm';
+import { CashFlowTransaction, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { format, parseISO, startOfMonth, addMonths, isSameMonth, differenceInMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -43,6 +43,8 @@ function detectInstallmentGroups(transactions: CashFlowTransaction[]) {
 
   transactions.forEach(tx => {
     if (tx.type !== 'expense') return;
+    const group = tx.account?.group_number;
+    if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
     const match = tx.description.match(installmentPattern);
     if (!match) return;
 
@@ -86,7 +88,7 @@ export function FinancialDashboardView({ transactions, isLoading }: FinancialDas
     transactions.forEach(tx => {
       if (tx.type !== 'expense') return;
       const group = tx.account?.group_number;
-      if (!group || group > 6) return;
+      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
 
       const accountId = tx.account_id;
       const accountName = tx.account?.name || accountId;
@@ -114,7 +116,7 @@ export function FinancialDashboardView({ transactions, isLoading }: FinancialDas
 
     transactions.forEach(tx => {
       const group = tx.account?.group_number;
-      if (!group || group > 6) return;
+      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
 
       const monthKey = format(parseISO(tx.date), 'yyyy-MM');
 

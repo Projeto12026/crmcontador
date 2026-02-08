@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CashFlowTransaction, ACCOUNT_GROUPS } from '@/types/crm';
+import { CashFlowTransaction, ACCOUNT_GROUPS, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { format, parseISO, startOfMonth, addMonths, isSameMonth } from 'date-fns';
@@ -65,7 +65,7 @@ export function CashFlowProjectionView({
       
       // Excluir grupos 7 e 8 do cálculo
       const group = tx.account?.group_number;
-      if (!group || group > 6) return;
+      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
 
       const accountId = tx.account_id;
       const accountName = tx.account?.name || accountId;
