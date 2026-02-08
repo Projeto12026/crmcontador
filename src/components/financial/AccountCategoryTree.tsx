@@ -29,6 +29,8 @@ const groupColors: Record<number, string> = {
   6: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
   7: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-100',
   8: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-100',
+  100: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100',
+  200: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-100',
 };
 
 function AccountCategoryNode({ 
