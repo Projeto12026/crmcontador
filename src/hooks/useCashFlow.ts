@@ -164,7 +164,7 @@ export function useCreateCashFlowTransaction() {
   return useMutation({
     mutationFn: async (data: CashFlowTransactionFormData) => {
       const installmentCount = data.is_installment ? (data.installment_count || 2) : 1;
-      const valuePerInstallment = data.value / installmentCount;
+      const valuePerInstallment = data.value; // valor já é por parcela
       const baseDate = parseISO(data.date);
       
       const transactionsToInsert = [];
