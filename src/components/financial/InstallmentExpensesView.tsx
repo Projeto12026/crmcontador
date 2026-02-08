@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CashFlowTransaction } from '@/types/crm';
+import { CashFlowTransaction, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CalendarClock, TrendingDown } from 'lucide-react';
@@ -50,8 +50,13 @@ export function InstallmentExpensesView({ transactions, isLoading }: Installment
   const installmentGroups = useMemo(() => {
     if (!transactions || transactions.length === 0) return [];
 
-    // Only expense transactions
-    const expenses = transactions.filter(tx => tx.type === 'expense');
+    // Only expense transactions, excluding administrative groups
+    const expenses = transactions.filter(tx => {
+      if (tx.type !== 'expense') return false;
+      const group = tx.account?.group_number;
+      if (group && (group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group))) return false;
+      return true;
+    });
 
     // Group by base description + account_id + value
     const groupMap = new Map<string, CashFlowTransaction[]>();

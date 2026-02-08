@@ -94,7 +94,7 @@ export function TransactionFormDialog({
     if (type === 'income') {
       return acc.group_number >= 1 && acc.group_number <= 4;
     } else {
-      return acc.group_number >= 5 && acc.group_number <= 6;
+      return (acc.group_number >= 5 && acc.group_number <= 6) || acc.group_number === 100 || acc.group_number === 200;
     }
   });
 
