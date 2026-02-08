@@ -109,11 +109,12 @@ export function CashFlowFilters({
               value={filters.groupNumber?.toString() || 'all'}
               onValueChange={(v) => {
                 const groupNum = v === 'all' ? undefined : Number(v) as AccountGroupNumber;
-                updateFilter('groupNumber', groupNum);
-                // Limpar conta se mudou o grupo
-                if (groupNum !== filters.groupNumber) {
-                  updateFilter('accountId', undefined);
-                }
+                // Atualizar grupo e limpar conta ao mesmo tempo para evitar race condition
+                onFiltersChange({ 
+                  ...filters, 
+                  groupNumber: groupNum, 
+                  accountId: groupNum !== filters.groupNumber ? undefined : filters.accountId 
+                });
               }}
             >
               <SelectTrigger className="w-[180px]">
