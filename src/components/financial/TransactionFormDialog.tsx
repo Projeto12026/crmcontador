@@ -85,7 +85,12 @@ export function TransactionFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ ...formData, type: editingTransaction?.type || type });
+    const submitData = { 
+      ...formData, 
+      type: editingTransaction?.type || type,
+      origin_destination: formData.description, // usar descrição como origem/destino
+    };
+    onSubmit(submitData);
     setFormData(getInitialFormData());
   };
 
@@ -120,8 +125,8 @@ export function TransactionFormDialog({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="value">Valor *</Label>
+             <div className="space-y-2">
+              <Label htmlFor="value">Valor da Parcela *</Label>
               <Input
                 id="value"
                 type="number"
@@ -164,18 +169,7 @@ export function TransactionFormDialog({
             </Select>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="origin_destination">
-              {type === 'income' ? 'Origem' : 'Destino'} *
-            </Label>
-            <Input
-              id="origin_destination"
-              value={formData.origin_destination}
-              onChange={(e) => setFormData({ ...formData, origin_destination: e.target.value })}
-              placeholder={type === 'income' ? 'De onde vem o valor' : 'Para onde vai o valor'}
-              required
-            />
-          </div>
+          
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -256,7 +250,8 @@ export function TransactionFormDialog({
             
             {formData.is_installment && formData.value > 0 && (
               <p className="text-sm text-muted-foreground">
-                Valor por parcela: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.value / (formData.installment_count || 2))}
+                Valor total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.value * (formData.installment_count || 2))}
+                {' '}({formData.installment_count || 2}x de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.value)})
               </p>
             )}
           </div>
