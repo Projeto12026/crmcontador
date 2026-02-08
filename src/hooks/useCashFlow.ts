@@ -77,14 +77,12 @@ export function useCashFlowSummary(startDate: string, endDate: string, financial
 
       if (error) throw error;
 
-      // Filtrar grupos 7 e 8 (mas se filtrado por conta financeira, incluir todos exceto 7/8)
+      // Filtrar grupos 7, 8 e 100+ (Nescon, Terceiros) - SEMPRE excluídos dos totais
       const filtered = transactions?.filter(t => {
         const group = (t.account_categories as { group_number: number })?.group_number;
         if (!group) return false;
-        // Grupos 7 e 8 são sempre excluídos
         if (group === 7 || group === 8) return false;
-        // Grupos 100+ (Nescon, Terceiros) só são excluídos quando NÃO há filtro de conta financeira
-        if (!financialAccountId && group >= 100) return false;
+        if (group >= 100) return false;
         return true;
       }) || [];
 
