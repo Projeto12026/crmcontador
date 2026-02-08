@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType } from '@/types/crm';
+import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
 
@@ -77,11 +77,11 @@ export function useCashFlowSummary(startDate: string, endDate: string, financial
 
       if (error) throw error;
 
-      // Filtrar apenas grupos 7 e 8 - grupos 100+ são incluídos nos totais do fluxo de caixa
+      // Filtrar grupos 7, 8 e grupos administrativos (100, 200)
       const filtered = transactions?.filter(t => {
         const group = (t.account_categories as { group_number: number })?.group_number;
         if (!group) return false;
-        if (group === 7 || group === 8) return false;
+        if (group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return false;
         return true;
       }) || [];
 
