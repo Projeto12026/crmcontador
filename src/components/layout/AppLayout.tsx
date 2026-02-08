@@ -137,9 +137,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4 md:h-12">
-          <SidebarTrigger className="-ml-1 md:-ml-0" aria-label="Abrir/fechar menu">
-            <Menu className="h-5 w-5 md:h-4 md:w-4" />
-          </SidebarTrigger>
+          <SidebarTrigger className="-ml-1 md:-ml-0" aria-label="Abrir/fechar menu" />
           <h1 className="truncate text-lg font-semibold md:text-base">CRM Contador</h1>
         </header>
         <div className="min-w-0 flex-1 overflow-auto p-4 md:p-6">
