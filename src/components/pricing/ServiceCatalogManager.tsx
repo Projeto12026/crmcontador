@@ -24,6 +24,12 @@ const DEPARTMENTS: Record<string, { label: string; color: string }> = {
   consultoria: { label: 'Consultoria', color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200' },
 };
 
+const SERVICE_TYPES: Record<string, string> = {
+  recurring: 'Recorrente',
+  annual: 'Anual',
+  one_time: 'Pontual',
+};
+
 export function ServiceCatalogManager() {
   const { data: services, isLoading } = useServiceCatalog();
   const createItem = useCreateServiceCatalogItem();
@@ -32,11 +38,11 @@ export function ServiceCatalogManager() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PricingServiceCatalog | null>(null);
-  const [form, setForm] = useState({ name: '', department: 'contabil', description: '', default_hours_per_month: 1 });
+  const [form, setForm] = useState({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring' });
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '', department: 'contabil', description: '', default_hours_per_month: 1 });
+    setForm({ name: '', department: 'contabil', description: '', default_hours_per_month: 1, service_type: 'recurring' });
     setDialogOpen(true);
   };
 
@@ -47,6 +53,7 @@ export function ServiceCatalogManager() {
       department: item.department,
       description: item.description || '',
       default_hours_per_month: item.default_hours_per_month,
+      service_type: (item as any).service_type || 'recurring',
     });
     setDialogOpen(true);
   };
@@ -103,8 +110,13 @@ export function ServiceCatalogManager() {
                         )}
                       </div>
                       <div className="flex items-center gap-3 ml-4 shrink-0">
+                        {(item as any).service_type && (item as any).service_type !== 'recurring' && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {SERVICE_TYPES[(item as any).service_type] || (item as any).service_type}
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {item.default_hours_per_month}h/mês
+                          {item.default_hours_per_month}h
                         </span>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(item)}>
                           <Edit2 className="h-3.5 w-3.5" />
@@ -147,9 +159,22 @@ export function ServiceCatalogManager() {
               <Label>Descrição</Label>
               <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
-            <div className="space-y-2">
-              <Label>Horas Padrão/Mês</Label>
-              <Input type="number" min={0.5} step={0.5} value={form.default_hours_per_month} onChange={e => setForm(f => ({ ...f, default_hours_per_month: Number(e.target.value) }))} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Horas Padrão</Label>
+                <Input type="number" min={0.5} step={0.5} value={form.default_hours_per_month} onChange={e => setForm(f => ({ ...f, default_hours_per_month: Number(e.target.value) }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de Serviço</Label>
+                <Select value={form.service_type} onValueChange={v => setForm(f => ({ ...f, service_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SERVICE_TYPES).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <DialogFooter>
