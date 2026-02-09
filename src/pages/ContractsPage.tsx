@@ -3,6 +3,7 @@ import { useContracts, useCreateContract, useUpdateContract, useDeleteContract }
 import { useClients } from '@/hooks/useClients';
 import { Contract, ContractFormData, ContractStatus, ContractManager, TaxType } from '@/types/crm';
 import { ContractEiSluGenerator } from '@/components/contracts/ContractEiSluGenerator';
+import { ContractAgentWizard } from '@/components/contracts/ContractAgentWizard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -255,7 +256,7 @@ export function ContractsPage() {
   // Count finalized contracts
   const finalizedCount = contracts?.filter(c => statusConfig[c.status].isFinalized).length || 0;
 
-  const [mainView, setMainView] = useState<'list' | 'generator'>('list');
+  const [mainView, setMainView] = useState<'list' | 'generator' | 'agent'>('list');
 
   return (
     <div className="space-y-6">
@@ -273,11 +274,20 @@ export function ContractsPage() {
           onClick={() => setMainView('generator')}
         >
           <FileText className="mr-2 h-4 w-4" />
-          Gerador EI → SLU
+          Formulário EI → SLU
+        </Button>
+        <Button
+          variant={mainView === 'agent' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setMainView('agent')}
+        >
+          💬 Assistente EI → SLU
         </Button>
       </div>
 
-      {mainView === 'generator' ? (
+      {mainView === 'agent' ? (
+        <ContractAgentWizard />
+      ) : mainView === 'generator' ? (
         <ContractEiSluGenerator />
       ) : (
       <>
