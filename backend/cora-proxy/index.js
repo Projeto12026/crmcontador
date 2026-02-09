@@ -7,33 +7,63 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── Helper: carrega certificados (base64 env OU arquivo) ──
+function loadCertificates() {
+  const certBase64 = process.env.CORA_CERT_BASE64;
+  const keyBase64  = process.env.CORA_KEY_BASE64;
+
+  // Prioridade 1: variáveis de ambiente em base64
+  if (certBase64 && keyBase64) {
+    return {
+      cert: Buffer.from(certBase64, 'base64'),
+      key:  Buffer.from(keyBase64, 'base64'),
+    };
+  }
+
+  // Prioridade 2: arquivos no filesystem
+  const certPath = process.env.CORA_CERT_PATH || '/certs/certificate.pem';
+  const keyPath  = process.env.CORA_KEY_PATH  || '/certs/private-key.pem';
+
+  try {
+    return {
+      cert: fs.readFileSync(certPath),
+      key:  fs.readFileSync(keyPath),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── Health check ──────────────────────────────────────
 app.get('/api/cora/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'cora-proxy' });
+  const certs = loadCertificates();
+  res.json({
+    status: 'ok',
+    service: 'cora-proxy',
+    client_id_configured: !!process.env.CORA_CLIENT_ID,
+    certificates_loaded: !!certs,
+    method: process.env.CORA_CERT_BASE64 ? 'base64_env' : 'file',
+  });
 });
 
 // ── Get Token (mTLS) ─────────────────────────────────
 app.post('/api/cora/get-token', async (req, res) => {
   try {
     const clientId = process.env.CORA_CLIENT_ID;
-    const certPath = process.env.CORA_CERT_PATH || '/certs/certificate.pem';
-    const keyPath  = process.env.CORA_KEY_PATH  || '/certs/private-key.pem';
 
     if (!clientId) {
       return res.status(500).json({ error: 'CORA_CLIENT_ID não configurado' });
     }
 
-    // Lê os certificados do filesystem
-    let cert, key;
-    try {
-      cert = fs.readFileSync(certPath);
-      key  = fs.readFileSync(keyPath);
-    } catch (e) {
+    const certs = loadCertificates();
+    if (!certs) {
       return res.status(500).json({
         error: 'Certificados mTLS não encontrados',
-        detail: `Verifique os arquivos em ${certPath} e ${keyPath}`,
+        detail: 'Configure CORA_CERT_BASE64 + CORA_KEY_BASE64 ou monte arquivos em /certs/',
       });
     }
+
+    const { cert, key } = certs;
 
     // Monta a requisição mTLS para a API Cora
     const tokenUrl = 'https://matls-clients.api.cora.com.br/token';
