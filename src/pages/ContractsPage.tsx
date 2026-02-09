@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useContracts, useCreateContract, useUpdateContract, useDeleteContract } from '@/hooks/useContracts';
 import { useClients } from '@/hooks/useClients';
 import { Contract, ContractFormData, ContractStatus, ContractManager, TaxType } from '@/types/crm';
+import { ContractEiSluGenerator } from '@/components/contracts/ContractEiSluGenerator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,7 +32,7 @@ import {
 } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Loader2, FileText } from 'lucide-react';
 
 const statusConfig: Record<ContractStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; isFinalized: boolean }> = {
   draft: { label: 'Rascunho', variant: 'secondary', isFinalized: false },
@@ -254,8 +255,32 @@ export function ContractsPage() {
   // Count finalized contracts
   const finalizedCount = contracts?.filter(c => statusConfig[c.status].isFinalized).length || 0;
 
+  const [mainView, setMainView] = useState<'list' | 'generator'>('list');
+
   return (
     <div className="space-y-6">
+      <div className="flex gap-2 border-b pb-2">
+        <Button
+          variant={mainView === 'list' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setMainView('list')}
+        >
+          Contratos
+        </Button>
+        <Button
+          variant={mainView === 'generator' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setMainView('generator')}
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          Gerador EI → SLU
+        </Button>
+      </div>
+
+      {mainView === 'generator' ? (
+        <ContractEiSluGenerator />
+      ) : (
+      <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Contratos</h1>
@@ -529,6 +554,8 @@ export function ContractsPage() {
           </form>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 }
