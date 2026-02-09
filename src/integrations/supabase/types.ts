@@ -434,6 +434,187 @@ export type Database = {
           },
         ]
       }
+      cora_boletos: {
+        Row: {
+          cnpj: string
+          competencia_ano: number | null
+          competencia_mes: number | null
+          cora_invoice_id: string
+          created_at: string
+          due_date: string | null
+          empresa_id: string | null
+          id: string
+          paid_at: string | null
+          raw_json: Json | null
+          status: string
+          synced_at: string
+          total_amount_cents: number | null
+        }
+        Insert: {
+          cnpj: string
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          cora_invoice_id: string
+          created_at?: string
+          due_date?: string | null
+          empresa_id?: string | null
+          id?: string
+          paid_at?: string | null
+          raw_json?: Json | null
+          status?: string
+          synced_at?: string
+          total_amount_cents?: number | null
+        }
+        Update: {
+          cnpj?: string
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          cora_invoice_id?: string
+          created_at?: string
+          due_date?: string | null
+          empresa_id?: string | null
+          id?: string
+          paid_at?: string | null
+          raw_json?: Json | null
+          status?: string
+          synced_at?: string
+          total_amount_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cora_boletos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "cora_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cora_config: {
+        Row: {
+          chave: string
+          updated_at: string
+          valor: Json | null
+        }
+        Insert: {
+          chave: string
+          updated_at?: string
+          valor?: Json | null
+        }
+        Update: {
+          chave?: string
+          updated_at?: string
+          valor?: Json | null
+        }
+        Relationships: []
+      }
+      cora_empresas: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          cnpj: string
+          created_at: string
+          dia_vencimento: number | null
+          email: string | null
+          forma_envio: string | null
+          id: string
+          is_active: boolean | null
+          observacoes: string | null
+          telefone: string | null
+          updated_at: string
+          valor_mensal: number | null
+        }
+        Insert: {
+          client_id?: string | null
+          client_name?: string | null
+          cnpj: string
+          created_at?: string
+          dia_vencimento?: number | null
+          email?: string | null
+          forma_envio?: string | null
+          id?: string
+          is_active?: boolean | null
+          observacoes?: string | null
+          telefone?: string | null
+          updated_at?: string
+          valor_mensal?: number | null
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string | null
+          cnpj?: string
+          created_at?: string
+          dia_vencimento?: number | null
+          email?: string | null
+          forma_envio?: string | null
+          id?: string
+          is_active?: boolean | null
+          observacoes?: string | null
+          telefone?: string | null
+          updated_at?: string
+          valor_mensal?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cora_empresas_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cora_envios: {
+        Row: {
+          boleto_id: string | null
+          canal: string | null
+          competencia_ano: number | null
+          competencia_mes: number | null
+          created_at: string
+          detalhe: string | null
+          empresa_id: string | null
+          id: string
+          sucesso: boolean | null
+        }
+        Insert: {
+          boleto_id?: string | null
+          canal?: string | null
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          created_at?: string
+          detalhe?: string | null
+          empresa_id?: string | null
+          id?: string
+          sucesso?: boolean | null
+        }
+        Update: {
+          boleto_id?: string | null
+          canal?: string | null
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          created_at?: string
+          detalhe?: string | null
+          empresa_id?: string | null
+          id?: string
+          sucesso?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cora_envios_boleto_id_fkey"
+            columns: ["boleto_id"]
+            isOneToOne: false
+            referencedRelation: "cora_boletos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cora_envios_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "cora_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_accounts: {
         Row: {
           account_category_id: string | null

@@ -33,6 +33,7 @@ import {
   ClipboardList,
   LogOut,
   Loader2,
+  Receipt,
 } from 'lucide-react';
 
 interface NavItem {
@@ -52,6 +53,7 @@ const navItems: NavItem[] = [
   { label: 'Folha de Pagamento', href: '/folha-pagamento', icon: <ClipboardList className="h-5 w-5 shrink-0" /> },
   { label: 'Financeiro', href: '/financeiro', icon: <DollarSign className="h-5 w-5 shrink-0" /> },
   { label: 'Precificação', href: '/precificacao', icon: <Calculator className="h-5 w-5 shrink-0" /> },
+  { label: 'Cora', href: '/cora', icon: <Receipt className="h-5 w-5 shrink-0" /> },
 ];
 
 interface AppLayoutProps {
