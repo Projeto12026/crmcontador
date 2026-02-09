@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useCoraEmpresas,
   useCreateCoraEmpresa,
@@ -737,9 +737,10 @@ function ParametrosTab() {
 
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
+  const [configLoaded, setConfigLoaded] = useState(false);
 
-  const loaded = configs && configs.length >= 0;
-  if (loaded && !apiConfig.client_id && configs.length > 0) {
+  useEffect(() => {
+    if (!configs || configLoaded) return;
     const api = configs.find(c => c.chave === 'cora_api');
     const wpp = configs.find(c => c.chave === 'whatsapp');
     if (api?.valor) {
@@ -755,7 +756,8 @@ function ParametrosTab() {
       const v = wpp.valor as any;
       setWhatsappConfig({ api_url: v.api_url || '', token: v.token || '' });
     }
-  }
+    setConfigLoaded(true);
+  }, [configs, configLoaded]);
 
   const saveApiConfig = () => { upsertConfig.mutate({ chave: 'cora_api', valor: apiConfig }); };
   const saveWhatsappConfig = () => { upsertConfig.mutate({ chave: 'whatsapp', valor: whatsappConfig }); };
