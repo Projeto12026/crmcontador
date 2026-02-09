@@ -227,3 +227,53 @@ export function useCoraEnvios(competenciaAno?: number, competenciaMes?: number) 
     },
   });
 }
+
+// ===================== MESSAGE TEMPLATES =====================
+
+export interface CoraMessageTemplate {
+  id: string;
+  template_key: string;
+  name: string;
+  description: string | null;
+  message_body: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useCoraMessageTemplates() {
+  return useQuery({
+    queryKey: ['cora-message-templates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cora_message_templates' as any)
+        .select('*')
+        .order('template_key');
+      if (error) throw error;
+      return data as unknown as CoraMessageTemplate[];
+    },
+  });
+}
+
+export function useUpdateCoraMessageTemplate() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ id, message_body, is_active }: { id: string; message_body: string; is_active?: boolean }) => {
+      const updates: any = { message_body };
+      if (is_active !== undefined) updates.is_active = is_active;
+      const { error } = await supabase
+        .from('cora_message_templates' as any)
+        .update(updates)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cora-message-templates'] });
+      toast({ title: 'Template atualizado com sucesso' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Erro ao atualizar template', description: err.message, variant: 'destructive' });
+    },
+  });
+}

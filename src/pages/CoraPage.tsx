@@ -7,6 +7,8 @@ import {
   useCoraConfig,
   useUpsertCoraConfig,
   useCoraBoletos,
+  useCoraMessageTemplates,
+  useUpdateCoraMessageTemplate,
   CoraEmpresa,
   CoraEmpresaFormData,
   CoraBoleto,
@@ -718,6 +720,8 @@ function EmpresasTab() {
 function ParametrosTab() {
   const { data: configs, isLoading } = useCoraConfig();
   const upsertConfig = useUpsertCoraConfig();
+  const { data: templates, isLoading: loadingTemplates } = useCoraMessageTemplates();
+  const updateTemplate = useUpdateCoraMessageTemplate();
 
   const [apiConfig, setApiConfig] = useState({
     client_id: '',
@@ -730,6 +734,9 @@ function ParametrosTab() {
     api_url: '',
     token: '',
   });
+
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
 
   const loaded = configs && configs.length >= 0;
   if (loaded && !apiConfig.client_id && configs.length > 0) {
@@ -753,7 +760,21 @@ function ParametrosTab() {
   const saveApiConfig = () => { upsertConfig.mutate({ chave: 'cora_api', valor: apiConfig }); };
   const saveWhatsappConfig = () => { upsertConfig.mutate({ chave: 'whatsapp', valor: whatsappConfig }); };
 
-  if (isLoading) {
+  const handleStartEdit = (template: any) => {
+    setEditingTemplate(template.id);
+    setEditBody(template.message_body);
+  };
+
+  const handleSaveTemplate = (id: string) => {
+    updateTemplate.mutate({ id, message_body: editBody });
+    setEditingTemplate(null);
+  };
+
+  const handleToggleActive = (template: any) => {
+    updateTemplate.mutate({ id: template.id, message_body: template.message_body, is_active: !template.is_active });
+  };
+
+  if (isLoading || loadingTemplates) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -761,65 +782,134 @@ function ParametrosTab() {
     );
   }
 
+  const TEMPLATE_ICONS: Record<string, React.ReactNode> = {
+    before_due: <CheckCircle2 className="h-5 w-5 text-green-600" />,
+    after_due: <AlertTriangle className="h-5 w-5 text-red-600" />,
+    reminder: <Clock className="h-5 w-5 text-blue-600" />,
+    reminder_today: <Calendar className="h-5 w-5 text-yellow-600" />,
+  };
+
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-6">
+      {/* Templates de Mensagem */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">API Cora</CardTitle>
-          <CardDescription>Configurações de conexão com a API Cora (mTLS).</CardDescription>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <MessageSquare className="h-5 w-5" />
+            Templates de Mensagem
+          </CardTitle>
+          <CardDescription>
+            Configure as mensagens enviadas para cada cenário. Use as variáveis: <code className="bg-muted px-1 rounded">{'{{nome}}'}</code>, <code className="bg-muted px-1 rounded">{'{{competencia}}'}</code>, <code className="bg-muted px-1 rounded">{'{{vencimento}}'}</code>, <code className="bg-muted px-1 rounded">{'{{valor}}'}</code>, <code className="bg-muted px-1 rounded">{'{{dias_atraso}}'}</code>
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Client ID Cora</Label>
-            <Input value={apiConfig.client_id} onChange={(e) => setApiConfig({ ...apiConfig, client_id: e.target.value })} placeholder="int-3udMdndv53r4OZLtakIhF3" />
-          </div>
-          <div className="space-y-2">
-            <Label>Base URL (API pública)</Label>
-            <Input value={apiConfig.base_url} onChange={(e) => setApiConfig({ ...apiConfig, base_url: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>mTLS URL (autenticação)</Label>
-            <Input value={apiConfig.matls_url} onChange={(e) => setApiConfig({ ...apiConfig, matls_url: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>URL do Backend (get-token)</Label>
-            <Input value={apiConfig.backend_token_url} onChange={(e) => setApiConfig({ ...apiConfig, backend_token_url: e.target.value })} placeholder="https://sua-vps.com/api/cora/get-token" />
-            <p className="text-xs text-muted-foreground">URL do seu backend Node.js (VPS/EasyPanel) que possui os certificados e faz mTLS.</p>
-          </div>
-          <Button onClick={saveApiConfig} disabled={upsertConfig.isPending}>Salvar Configurações API</Button>
+          {templates?.map(template => (
+            <Card key={template.id} className={`border ${!template.is_active ? 'opacity-50' : ''}`}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {TEMPLATE_ICONS[template.template_key] || <MessageSquare className="h-5 w-5" />}
+                    <div>
+                      <p className="font-medium text-sm">{template.name}</p>
+                      <p className="text-xs text-muted-foreground">{template.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={template.is_active ? 'default' : 'secondary'} className="cursor-pointer" onClick={() => handleToggleActive(template)}>
+                      {template.is_active ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                    {editingTemplate === template.id ? (
+                      <Button size="sm" onClick={() => handleSaveTemplate(template.id)} disabled={updateTemplate.isPending}>
+                        Salvar
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => handleStartEdit(template)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {editingTemplate === template.id ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={editBody}
+                      onChange={(e) => setEditBody(e.target.value)}
+                      rows={4}
+                      className="text-sm"
+                    />
+                    <Button size="sm" variant="ghost" onClick={() => setEditingTemplate(null)}>Cancelar</Button>
+                  </div>
+                ) : (
+                  <div className="bg-muted/50 rounded-md p-3 text-sm whitespace-pre-wrap">
+                    {template.message_body}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">WhatsApp</CardTitle>
-          <CardDescription>Configurações para envio de boletos via WhatsApp.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>URL da API WhatsApp</Label>
-            <Input value={whatsappConfig.api_url} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, api_url: e.target.value })} placeholder="https://api.wascript.com.br/..." />
-          </div>
-          <div className="space-y-2">
-            <Label>Token WhatsApp</Label>
-            <Input type="password" value={whatsappConfig.token} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, token: e.target.value })} />
-          </div>
-          <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>Salvar Configurações WhatsApp</Button>
-        </CardContent>
-      </Card>
+      {/* API & WhatsApp configs */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">API Cora</CardTitle>
+            <CardDescription>Configurações de conexão com a API Cora (mTLS).</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Client ID Cora</Label>
+              <Input value={apiConfig.client_id} onChange={(e) => setApiConfig({ ...apiConfig, client_id: e.target.value })} placeholder="int-3udMdndv53r4OZLtakIhF3" />
+            </div>
+            <div className="space-y-2">
+              <Label>Base URL (API pública)</Label>
+              <Input value={apiConfig.base_url} onChange={(e) => setApiConfig({ ...apiConfig, base_url: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>mTLS URL (autenticação)</Label>
+              <Input value={apiConfig.matls_url} onChange={(e) => setApiConfig({ ...apiConfig, matls_url: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>URL do Backend (get-token)</Label>
+              <Input value={apiConfig.backend_token_url} onChange={(e) => setApiConfig({ ...apiConfig, backend_token_url: e.target.value })} placeholder="https://sua-vps.com/api/cora/get-token" />
+              <p className="text-xs text-muted-foreground">URL do seu backend Node.js (VPS/EasyPanel) que possui os certificados e faz mTLS.</p>
+            </div>
+            <Button onClick={saveApiConfig} disabled={upsertConfig.isPending}>Salvar Configurações API</Button>
+          </CardContent>
+        </Card>
 
-      <Card className="md:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-lg">Arquitetura da Integração</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p><strong>1. Token:</strong> O backend (VPS com certificados) autentica via mTLS em <code>matls-clients.api.cora.com.br/token</code> e retorna o access_token.</p>
-          <p><strong>2. Busca:</strong> Com o token, busca boletos em <code>/v2/invoices?search=CNPJ&start=...&end=...</code>.</p>
-          <p><strong>3. Status:</strong> OPEN, PAID, LATE, CANCELLED, DRAFT, IN_PAYMENT.</p>
-          <p><strong>4. Cache:</strong> Boletos são armazenados na tabela <code>cora_boletos</code> para consulta rápida sem chamar a API toda vez.</p>
-          <p><strong>5. Envio:</strong> Busca boleto por CNPJ + competência, baixa PDF, envia via WhatsApp/Email. Registra em <code>cora_envios</code>.</p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">WhatsApp</CardTitle>
+            <CardDescription>Configurações para envio de boletos via WhatsApp.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>URL da API WhatsApp</Label>
+              <Input value={whatsappConfig.api_url} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, api_url: e.target.value })} placeholder="https://api.wascript.com.br/..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Token WhatsApp</Label>
+              <Input type="password" value={whatsappConfig.token} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, token: e.target.value })} />
+            </div>
+            <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>Salvar Configurações WhatsApp</Button>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">Arquitetura da Integração</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p><strong>1. Token:</strong> O backend (VPS com certificados) autentica via mTLS em <code>matls-clients.api.cora.com.br/token</code> e retorna o access_token.</p>
+            <p><strong>2. Busca:</strong> Com o token, busca boletos em <code>/v2/invoices?search=CNPJ&start=...&end=...</code>.</p>
+            <p><strong>3. Status:</strong> OPEN, PAID, LATE, CANCELLED, DRAFT, IN_PAYMENT.</p>
+            <p><strong>4. Cache:</strong> Boletos são armazenados na tabela <code>cora_boletos</code> para consulta rápida sem chamar a API toda vez.</p>
+            <p><strong>5. Envio:</strong> Busca boleto por CNPJ + competência, baixa PDF, envia via WhatsApp/Email. Registra em <code>cora_envios</code>.</p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -615,6 +615,39 @@ export type Database = {
           },
         ]
       }
+      cora_message_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          message_body: string
+          name: string
+          template_key: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          message_body: string
+          name: string
+          template_key: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          message_body?: string
+          name?: string
+          template_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       financial_accounts: {
         Row: {
           account_category_id: string | null
