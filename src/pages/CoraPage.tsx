@@ -48,6 +48,7 @@ import {
   Send,
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { EnvioBoletosPendentes } from '@/components/cora/EnvioBoletosPendentes';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -238,6 +239,13 @@ function DashboardTab() {
           </Button>
         </div>
       </div>
+
+      {/* Envio Seletivo */}
+      <EnvioBoletosPendentes
+        empresasComStatus={empresasComStatus}
+        competenciaMes={competenciaMes}
+        competenciaAno={competenciaAno}
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
