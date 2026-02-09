@@ -161,3 +161,69 @@ export function useUpsertCoraConfig() {
     },
   });
 }
+
+// ---- Boletos (cache) ----
+
+export interface CoraBoleto {
+  id: string;
+  cora_invoice_id: string;
+  empresa_id: string | null;
+  cnpj: string;
+  status: string;
+  total_amount_cents: number | null;
+  due_date: string | null;
+  paid_at: string | null;
+  competencia_mes: number | null;
+  competencia_ano: number | null;
+  raw_json: unknown;
+  created_at: string;
+  synced_at: string;
+}
+
+export function useCoraBoletos(competenciaAno?: number, competenciaMes?: number) {
+  return useQuery({
+    queryKey: ['cora_boletos', competenciaAno, competenciaMes],
+    queryFn: async () => {
+      let query = supabase
+        .from('cora_boletos')
+        .select('*')
+        .order('due_date', { ascending: true });
+      if (competenciaAno) query = query.eq('competencia_ano', competenciaAno);
+      if (competenciaMes) query = query.eq('competencia_mes', competenciaMes);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as CoraBoleto[];
+    },
+  });
+}
+
+// ---- Envios (logs) ----
+
+export interface CoraEnvio {
+  id: string;
+  empresa_id: string | null;
+  boleto_id: string | null;
+  competencia_mes: number | null;
+  competencia_ano: number | null;
+  canal: string | null;
+  sucesso: boolean | null;
+  detalhe: string | null;
+  created_at: string;
+}
+
+export function useCoraEnvios(competenciaAno?: number, competenciaMes?: number) {
+  return useQuery({
+    queryKey: ['cora_envios', competenciaAno, competenciaMes],
+    queryFn: async () => {
+      let query = supabase
+        .from('cora_envios')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (competenciaAno) query = query.eq('competencia_ano', competenciaAno);
+      if (competenciaMes) query = query.eq('competencia_mes', competenciaMes);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as CoraEnvio[];
+    },
+  });
+}
