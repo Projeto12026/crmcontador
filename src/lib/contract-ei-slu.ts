@@ -134,54 +134,89 @@ export const CLAUSULA_1_NOVO_SOCIO =
   'Entra na sociedade, {{NOME_SOCIO_NOVO}}, nacionalidade: {{NACIONALIDADE_SOCIO_NOVO}}, {{ESTADO_CIVIL_SOCIO_NOVO}}{{REGIME_CASAMENTO_SOCIO_NOVO}}, natural da cidade de {{NATURALIDADE_SOCIO_NOVO}}, nascido(a) em: {{DATA_NASCIMENTO_SOCIO_NOVO}}, n° do documento de identidade: {{RG_SOCIO_NOVO}} órgão emissor: {{ORGAO_EMISSOR_RG_SOCIO_NOVO}}, CPF: {{CPF_SOCIO_NOVO}}, residente e domiciliado na {{ENDERECO_SOCIO_NOVO}}.';
 
 /**
- * Template completo do contrato EI → SLU para preview ao vivo.
+ * Template completo do contrato EI → SLU conforme modelo Word oficial.
  */
-export const CONTRACT_TEMPLATE = `ALTERAÇÃO E TRANSFORMAÇÃO DE EMPRESÁRIO INDIVIDUAL EM SOCIEDADE LIMITADA UNIPESSOAL
+export const CONTRACT_TEMPLATE = `CONTRATO SOCIAL DE SOCIEDADE EMPRESÁRIA LIMITADA UNIPESSOAL POR TRANSFORMAÇÃO DE EMPRESÁRIO INDIVIDUAL
 
-{{NOME_SOCIO}}, nascido(a) em {{NASCIMENTO_SOCIO}}, portador(a) do RG nº {{RG_SOCIO}} e CPF nº {{CPF_SOCIO}}, residente e domiciliado(a) na {{ENDERECO_SOCIO}}, único(a) titular da firma individual {{FIRMA_EI}}, com sede na {{ENDERECO_EI}}, inscrita no CNPJ sob o nº {{CNPJ}}, com NIRE nº {{NIRE}}, resolve transformar a empresa individual em Sociedade Limitada Unipessoal, nos termos seguintes:
+Por este instrumento particular, {{NOME_SOCIO}}, brasileira(a), empresário(a), nascido(a) em {{NASCIMENTO_SOCIO}}, inscrito na cédula de identidade {{RG_SOCIO}} e CPF {{CPF_SOCIO}}, residente na {{ENDERECO_SOCIO}}.
 
-CLÁUSULA 1ª – DA TRANSFORMAÇÃO E ADMISSÃO DE SÓCIO
+Titular da Empresário Individual sob a {{FIRMA_EI}}, com sede empresarial na {{ENDERECO_EI}}, registrado na JUCESP sob NIRE {{NIRE}}, inscrito no CNPJ sob nº {{CNPJ}}, nos termos da lei, transforma o seu registro de EMPRESÁRIO INDIVIDUAL em Sociedade Empresária, na condição de sócio único, nos termos da Lei nº 10.406/2002, art. 1.052 e seus §§ 1º e 2º, incluídos pela Lei nº 13.784, de 20/09/2019, estipulando-se o CONTRATO SOCIAL, o qual passará a vigorar nos seguintes termos e condições:
 
-O(A) empresário(a) individual resolve transformar a empresa individual em Sociedade Limitada Unipessoal (SLU).
+Cláusula 1ª.
 
-${'{'}{'{'}{'}'}{'}'} 
+Fica alterada a Razão Social para {{RAZAO_SOCIAL_SLU}}.
 
-CLÁUSULA 2ª – DA DENOMINAÇÃO SOCIAL E SEDE
+Cláusula 2ª.
 
-A sociedade passará a denominar-se {{RAZAO_SOCIAL_SLU}}, com sede na {{ENDERECO_SLU}}.
+O objeto passará a ser: {{OJETO_SOCIAL}}.
 
-CLÁUSULA 3ª – DO OBJETO SOCIAL
+Cláusula 3ª DA CONSOLIDAÇÃO DO INSTRUMENTO:
 
-A sociedade tem por objeto: {{OJETO_SOCIAL}}.
+Tendo em vista as modificações ora ajustadas, consolida-se o Instrumento Constitutivo, tornando sem efeito, a partir desta data, as cláusulas e condições contidas no contrato primitivo e alterações anteriores, passando a ter a seguinte redação.
 
-CLÁUSULA 4ª – DO PRAZO
+─────────────────────────────────────────────────
 
-A sociedade é constituída por prazo indeterminado, tendo início na data de registro deste instrumento.
+CONSOLIDAÇÃO DO CONTRATO SOCIAL DA SOCIEDADE LIMITADA UNIPESSOAL
+CNPJ {{CNPJ}}
+NIRE {{NIRE}}
 
-CLÁUSULA 5ª – DO CAPITAL SOCIAL
+{{NOME_SOCIO}}, brasileira(a), empresário(a), nascido(a) em {{NASCIMENTO_SOCIO}}, inscrito na cédula de identidade {{RG_SOCIO}} e CPF {{CPF_SOCIO}}, residente na {{ENDERECO_SOCIO}}.
 
-O capital social é de R$ {{CAPITAL_SOCIAL}}, totalmente integralizado em moeda corrente do país.
+Único sócio da sociedade limitada unipessoal que gira sob o nome {{RAZAO_SOCIAL_SLU}}, com sede na {{ENDERECO_SLU}}, inscrito no CNPJ/MF: {{CNPJ}}, RESOLVE, por este instrumento, consolidar o contrato social, tornando assim, sem efeito, a partir desta data, as cláusulas e condições contidas no contrato primitivo e alterações anteriores, que adequado às disposições da referida Lei nº 10.406/2002 aplicáveis a este tipo societário, passa a ter a seguinte redação:
 
-CLÁUSULA 6ª – DA ADMINISTRAÇÃO
+Cláusula 1ª.
 
-A sociedade será administrada pelo(a) sócio(a) {{NOME_SOCIO}}, que usará a denominação social nos atos que constituírem obrigações da sociedade.
+A sociedade unipessoal gira sob o nome empresarial de {{RAZAO_SOCIAL_SLU}}
 
-CLÁUSULA 7ª – DO FORO
+Cláusula 2ª.
 
-As partes elegem o foro da cidade de {{CIDADE_ASSINATURA}} para dirimir quaisquer controvérsias oriundas deste contrato.
+O endereço da sede: {{ENDERECO_SLU}}.
 
-CONSOLIDAÇÃO DO CONTRATO SOCIAL
+Cláusula 3ª.
 
-Denominação: {{RAZAO_SOCIAL_SLU}}
-CNPJ: {{CNPJ}}
-NIRE: {{NIRE}}
-Sede: {{ENDERECO_SLU}}
-Objeto: {{OJETO_SOCIAL}}
-Capital Social: R$ {{CAPITAL_SOCIAL}}
-Sócio(a): {{NOME_SOCIO}}, CPF {{CPF_SOCIO}}, RG {{RG_SOCIO}}
-Endereço do(a) Sócio(a): {{ENDERECO_SOCIO}}
+O objeto social: {{OJETO_SOCIAL}}
 
-{{CIDADE_ASSINATURA}}, {{DIA_ASSINATURA}} de {{MES_ASSINATURA}} de {{ANO_ASSINATURA}}.
+Cláusula 4ª.
+
+O prazo de duração da sociedade será por tempo indeterminado.
+
+Cláusula 5ª
+
+O capital é de {{CAPITAL_SOCIAL}} totalmente subscrito e já integralizado, em moeda corrente do País.
+
+Cláusula 6ª.
+
+A responsabilidade do sócio único é restrita ao valor de suas quotas, desde que inteiramente integralizado a totalidade do capital social, nos termos do art. 1.052 da Lei n.º 10.460/2002 (Código Civil).
+
+Cláusula 7ª.
+
+A administração da sociedade será exercida pelo sócio {{NOME_SOCIO}}, com os poderes e atribuições de administrador, isoladamente, que terá a representação ativa ou passiva da Sociedade, judicial e extrajudicialmente, podendo praticar todos os atos compreendidos no objeto social, sempre no interesse da Sociedade.
+
+Cláusula 8ª.
+
+O administrador declara, sob as penas da lei, de que não está impedida de exercer a administração da sociedade, por lei especial, ou em virtude de condenação criminal, ou por se encontrar sob os efeitos dela, a pena que vede, ainda que temporariamente, o acesso a cargos públicos; ou por crime falimentar, de prevaricação, peita ou suborno, concussão, peculato, ou contra a economia popular, contra o sistema financeiro nacional, contra normas de defesa da concorrência, contra as relações de consumo, fé pública, ou a propriedade.
+
+Cláusula 9ª.
+
+Ao término do cada exercício social, em 31 de dezembro, o administrador prestará contas justificadas da administração, procedendo à elaboração do inventário, do balanço patrimonial e do balanço de resultado econômico, nos quatro meses seguintes ao término do exercício social.
+
+Cláusula 10ª.
+
+A sociedade poderá a qualquer tempo, abrir ou fechar filial ou outra dependência, mediante alteração contratual assinada pela titular.
+
+Cláusula 11ª
+
+A participação do sócio nos lucros e nas perdas corresponde à exata proporção das respectivas quotas sociais.
+
+Cláusula 12ª:
+
+Em caso de falecimento do único sócio a sociedade limitada unipessoal poderá continuar com suas atividades com os herdeiros e/ou sucessores do "de cujus" ou do incapaz. Não sendo possível, ou inexistindo interesse destes, a sociedade poderá ser dissolvida.
+
+Cláusula 13ª.
+
+A sociedade tem por foro contratual a comarca de Guarulhos, Estado de SP, para dirimir quaisquer litígios decorrentes deste contrato social, renunciando-se expressamente a qualquer outro, por muito especial que seja.
+
+{{CIDADE_ASSINATURA}}, {{DIA_ASSINATURA}} {{MES_ASSINATURA}} {{ANO_ASSINATURA}}
 
 _____________________________________________
 {{NOME_SOCIO}}`;
