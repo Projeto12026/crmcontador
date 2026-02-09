@@ -18,7 +18,7 @@ import {
   ChevronDown, ChevronUp, X, Info, Phone,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useCoraConfig, CoraEmpresa, CoraBoleto } from '@/hooks/useCora';
+import { useCoraConfig, useCoraMessageTemplates, CoraEmpresa, CoraBoleto, CoraMessageTemplate } from '@/hooks/useCora';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -90,7 +90,7 @@ const STORAGE_KEY = 'ultimo_envio_boletos_cora';
 export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, competenciaAno }: Props) {
   const { toast } = useToast();
   const { data: configs } = useCoraConfig();
-
+  const { data: templates } = useCoraMessageTemplates();
   // State
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<EnvioResult | null>(null);
@@ -131,6 +131,31 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
   }, [configs]);
 
   const competencia = `${String(competenciaMes).padStart(2, '0')}/${competenciaAno}`;
+
+  // Resolve template message with variables
+  const resolveTemplate = useCallback((templateKey: string, empresa: EmpresaComStatus): string => {
+    const template = templates?.find(t => t.template_key === templateKey && t.is_active);
+    if (!template) return '';
+    const nome = empresa.client_name || empresa.client?.name || 'Cliente';
+    const amount = empresa.boleto?.total_amount_cents
+      ? empresa.boleto.total_amount_cents / 100
+      : empresa.valor_mensal || 0;
+    const valor = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(amount);
+    const dueDate = empresa.boleto?.due_date
+      ? parseLocalDate(empresa.boleto.due_date)
+      : gerarDataVencimento(empresa.dia_vencimento, competenciaMes, competenciaAno);
+    const vencimento = dueDate
+      ? dueDate.toLocaleDateString('pt-BR')
+      : `${String(empresa.dia_vencimento).padStart(2, '0')}/${String(competenciaMes).padStart(2, '0')}/${competenciaAno}`;
+    const dias = getDiasAtraso(empresa);
+
+    return template.message_body
+      .replace(/\{\{nome\}\}/g, nome)
+      .replace(/\{\{competencia\}\}/g, competencia)
+      .replace(/\{\{vencimento\}\}/g, vencimento)
+      .replace(/\{\{valor\}\}/g, valor)
+      .replace(/\{\{dias_atraso\}\}/g, dias != null ? String(dias) : '0');
+  }, [templates, competencia, competenciaMes, competenciaAno]);
 
   // Pipeline: filter empresas
   const empresasPendentes = useMemo(() => {
@@ -247,6 +272,10 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
           throw new Error(`Telefone inválido ou ausente para ${empresa.client_name || empresa.cnpj}. Cadastre um telefone com pelo menos 10 dígitos.`);
         }
 
+        // Resolve message template based on status
+        const templateKey = empresa.boletoStatus === 'LATE' ? 'after_due' : 'before_due';
+        const mensagem = resolveTemplate(templateKey, empresa);
+
         const response = await fetch(`${backendUrl}/api/notifications/whatsapp-optimized/process-boleto-complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -259,6 +288,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             },
             competencia,
             invoiceId: empresa.boleto?.cora_invoice_id || undefined,
+            mensagem,
+            templateKey,
           }),
         });
 
@@ -357,6 +388,14 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             return undefined;
           })();
 
+        // Check if due today for template selection
+        const dueDateObj = dueDate ? parseLocalDate(dueDate) : null;
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const isToday = dueDateObj && dueDateObj.getTime() === hoje.getTime();
+        const templateKey = isToday ? 'reminder_today' : 'reminder';
+        const mensagem = resolveTemplate(templateKey, empresa);
+
         const response = await fetch(`${backendUrl}/api/notifications/whatsapp-optimized/send-reminder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -373,6 +412,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
               due_date: dueDate,
               total_amount: empresa.boleto?.total_amount_cents || (empresa.valor_mensal ? empresa.valor_mensal * 100 : 0),
             },
+            mensagem,
+            templateKey,
           }),
         });
 
@@ -726,10 +767,16 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         )}
 
         {/* Footer info */}
-        <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+        <div className="text-xs text-muted-foreground space-y-2 pt-2 border-t">
           <p><strong>Competência:</strong> {competencia}</p>
           <p>Templates de mensagem configuráveis em <strong>Parâmetros</strong>.</p>
-          <p>Boleto completo: mensagem personalizada + PDF. Lembrete: somente texto (sem PDF).</p>
+          <div className="space-y-1">
+            <p className="font-medium text-foreground">Templates ativos:</p>
+            {templates?.filter(t => t.is_active).map(t => (
+              <p key={t.id}>• <strong>{t.name}</strong> ({t.template_key})</p>
+            ))}
+          </div>
+          <p>Boleto completo: usa template <code className="bg-muted px-1 rounded">before_due</code> ou <code className="bg-muted px-1 rounded">after_due</code> + PDF. Lembrete: <code className="bg-muted px-1 rounded">reminder</code> ou <code className="bg-muted px-1 rounded">reminder_today</code> (sem PDF).</p>
         </div>
       </CardContent>
     </Card>
