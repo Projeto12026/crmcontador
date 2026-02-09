@@ -12,14 +12,17 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { toast } from 'sonner';
-import { FileText, Copy, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { FileText, Copy, RotateCcw, CheckCircle2, Download } from 'lucide-react';
 import {
   CONTRACT_SECTIONS,
   ContractFormValues,
   CLAUSULA_1_NOVO_SOCIO,
   replacePlaceholders,
+  generateContractText,
   validateRequired,
 } from '@/lib/contract-ei-slu';
+import { downloadContractAsDocx } from '@/lib/contract-docx';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export function ContractEiSluGenerator() {
   const [values, setValues] = useState<ContractFormValues>({});
@@ -44,6 +47,7 @@ export function ContractEiSluGenerator() {
   };
 
   const generatedClausula1 = replacePlaceholders(CLAUSULA_1_NOVO_SOCIO, values);
+  const contractPreview = generateContractText(values);
 
   const handleCopyClausula = () => {
     navigator.clipboard.writeText(generatedClausula1);
@@ -51,11 +55,26 @@ export function ContractEiSluGenerator() {
   };
 
   const handleCopyAllValues = () => {
-    const lines = CONTRACT_SECTIONS.flatMap(section =>
-      section.fields.map(f => `${f.label}: ${values[f.key] || '(vazio)'}`)
-    );
-    navigator.clipboard.writeText(lines.join('\n'));
-    toast.success('Todos os valores copiados!');
+    navigator.clipboard.writeText(contractPreview);
+    toast.success('Contrato copiado!');
+  };
+
+  const handleDownloadDocx = async () => {
+    try {
+      const clientName = values['NOME_SOCIO'] || 'contrato';
+      const filename = `Contrato-EI-SLU-${clientName.replace(/\s+/g, '-')}.docx`;
+      await downloadContractAsDocx(contractPreview, filename);
+      toast.success('Contrato baixado com sucesso!');
+    } catch {
+      toast.error('Erro ao gerar o arquivo Word');
+    }
+  };
+
+  // Check if conditional fields should be shown
+  const shouldShowField = (fieldKey: string): boolean => {
+    if (fieldKey === 'NOVO_ENDERECO') return values['ALTERA_ENDERECO']?.toLowerCase() === 'sim';
+    if (fieldKey === 'NOVO_CAPITAL') return values['ALTERA_CAPITAL']?.toLowerCase() === 'sim';
+    return true;
   };
 
   const filledCount = Object.values(values).filter(v => v?.trim()).length;
@@ -99,13 +118,26 @@ export function ContractEiSluGenerator() {
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 pb-4">
-                  {section.fields.map(field => (
+                  {section.fields.filter(f => shouldShowField(f.key)).map(field => (
                     <div key={field.key} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
                       <Label htmlFor={field.key} className="text-sm">
                         {field.label}
                         {field.required && <span className="text-destructive ml-1">*</span>}
                       </Label>
-                      {field.type === 'textarea' ? (
+                      {field.type === 'yesno' ? (
+                        <Select
+                          value={values[field.key] || ''}
+                          onValueChange={v => handleChange(field.key, v)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Sim">Sim</SelectItem>
+                            <SelectItem value="Não">Não</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : field.type === 'textarea' ? (
                         <Textarea
                           id={field.key}
                           value={values[field.key] || ''}
@@ -117,7 +149,7 @@ export function ContractEiSluGenerator() {
                       ) : (
                         <Input
                           id={field.key}
-                          type={field.type === 'date' ? 'text' : 'text'}
+                          type="text"
                           value={values[field.key] || ''}
                           onChange={e => handleChange(field.key, e.target.value)}
                           placeholder={field.hint}
@@ -135,13 +167,17 @@ export function ContractEiSluGenerator() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={handleGeneratePreview}>
+        <Button onClick={handleDownloadDocx}>
+          <Download className="mr-2 h-4 w-4" />
+          Baixar Word (.docx)
+        </Button>
+        <Button variant="outline" onClick={handleGeneratePreview}>
           <FileText className="mr-2 h-4 w-4" />
           Visualizar Dados
         </Button>
         <Button variant="outline" onClick={handleCopyAllValues}>
           <Copy className="mr-2 h-4 w-4" />
-          Copiar Todos os Valores
+          Copiar Contrato
         </Button>
         <Button variant="ghost" onClick={handleReset}>
           <RotateCcw className="mr-2 h-4 w-4" />
