@@ -87,8 +87,10 @@ export function ProcessKanbanView({ processes, subprocessLabel, onEditProcess, o
     
     return [
       { id: 'pending', name: 'Pendente', order: 0, color: 'bg-slate-500' },
-      { id: 'in_progress', name: 'Em Andamento', order: 1, color: 'bg-blue-500' },
-      { id: 'completed', name: 'Concluído', order: 2, color: 'bg-green-500' },
+      { id: 'levantamento', name: 'Levantamento de Pendências', order: 1, color: 'bg-amber-500' },
+      { id: 'in_progress', name: 'Em Andamento', order: 2, color: 'bg-blue-500' },
+      { id: 'protocolo', name: 'Protocolo nos Órgãos', order: 3, color: 'bg-purple-500' },
+      { id: 'completed', name: 'Concluído', order: 4, color: 'bg-green-500' },
     ];
   }, [activeTemplate]);
 
