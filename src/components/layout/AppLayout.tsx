@@ -22,6 +22,7 @@ import {
 import {
   LayoutDashboard,
   CheckSquare,
+  Calendar,
   Users,
   TrendingUp,
   FileText,
@@ -45,6 +46,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: <LayoutDashboard className="h-5 w-5 shrink-0" /> },
   { label: 'Tarefas', href: '/tarefas', icon: <CheckSquare className="h-5 w-5 shrink-0" /> },
+  { label: 'Agenda', href: '/agenda', icon: <Calendar className="h-5 w-5 shrink-0" /> },
   { label: 'Comercial', href: '/comercial', icon: <TrendingUp className="h-5 w-5 shrink-0" /> },
   { label: 'Clientes', href: '/clientes', icon: <Users className="h-5 w-5 shrink-0" /> },
   { label: 'Processos', href: '/processos', icon: <FolderKanban className="h-5 w-5 shrink-0" /> },

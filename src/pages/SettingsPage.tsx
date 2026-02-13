@@ -117,7 +117,8 @@ export function SettingsPage() {
       if (error) throw error;
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      downloadJson(data, `backup-completo-${dateStr}.json`);
+      const timeStr = new Date().toTimeString().slice(0, 5).replace(':', 'h');
+      downloadJson(data, `dados CRM Contador - ${dateStr} ${timeStr}.json`);
 
       // Save last backup date
       await supabase.from('settings').upsert(
@@ -148,7 +149,8 @@ export function SettingsPage() {
 
       // Only tables data without metadata
       const dateStr = new Date().toISOString().slice(0, 10);
-      downloadJson(data.tables, `backup-dados-${dateStr}.json`);
+      const timeStr = new Date().toTimeString().slice(0, 5).replace(':', 'h');
+      downloadJson(data.tables, `dados CRM Contador - dados - ${dateStr} ${timeStr}.json`);
 
       toast({ title: 'Sucesso!', description: 'Dados exportados com sucesso' });
     } catch (error) {

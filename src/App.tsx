@@ -6,8 +6,10 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
+import { useAutoBackup } from "@/hooks/useAutoBackup";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TasksPage } from "./pages/TasksPage";
+import { AgendaPage } from "./pages/AgendaPage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { CommercialPage } from "./pages/CommercialPage";
 import { ContractsPage } from "./pages/ContractsPage";
@@ -25,6 +27,7 @@ const queryClient = new QueryClient();
 
 function ProtectedRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
+  useAutoBackup();
 
   if (isLoading) {
     return null; // AppLayout handles loading state
@@ -39,6 +42,7 @@ function ProtectedRoutes() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/tarefas" element={<TasksPage />} />
+        <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/clientes" element={<ClientsPage />} />
         <Route path="/comercial" element={<CommercialPage />} />
         <Route path="/contratos" element={<ContractsPage />} />
