@@ -530,8 +530,11 @@ function NesconDashboardView({ transactions, isLoading }: { transactions: CashFl
   );
 }
 
+// Export sub-components for use in FinancialNesconPage
+export { NesconSummaryCards, NesconDashboardView, NesconProjectionView };
+
 // ============================================================
-// MAIN COMPONENT: NesconCashFlowView
+// MAIN COMPONENT: NesconCashFlowView (kept for backward compatibility)
 // ============================================================
 export function NesconCashFlowView() {
   const [subTab, setSubTab] = useState('dashboard');
