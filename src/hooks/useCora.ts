@@ -281,7 +281,7 @@ export function useSyncBoletos() {
   const { toast } = useToast();
   return useMutation({
     mutationFn: async ({ competenciaAno, competenciaMes }: { competenciaAno: number; competenciaMes: number }) => {
-      // 1. Get token via proxy (URL relativa - nginx faz reverse proxy para cora-proxy)
+      // 1. Get token via proxy
       const tokenRes = await fetch(`/api/cora/get-token`, { method: 'POST' });
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({}));
@@ -290,43 +290,65 @@ export function useSyncBoletos() {
       const { access_token } = await tokenRes.json();
       if (!access_token) throw new Error('Token vazio retornado pelo proxy');
 
-      // 2. Search invoices for the competência period
+      // 2. Search invoices with pagination
       const start = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-01`;
       const lastDay = new Date(competenciaAno, competenciaMes, 0).getDate();
       const end = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-${lastDay}`;
 
-      const invoicesRes = await fetch(`/api/cora/search-invoices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: access_token, start, end }),
-      });
-      if (!invoicesRes.ok) {
-        const err = await invoicesRes.json().catch(() => ({}));
-        throw new Error(err.error || `Erro ao buscar boletos: HTTP ${invoicesRes.status}`);
-      }
-      const invoicesData = await invoicesRes.json();
-      const invoices = invoicesData.items || invoicesData.invoices || invoicesData || [];
-      if (!Array.isArray(invoices)) throw new Error('Resposta inválida da API Cora');
+      const allInvoices: any[] = [];
+      let page = 0;
+      const perPage = 100;
+      let hasMore = true;
 
-      // 4. Get empresas for CNPJ matching
+      while (hasMore) {
+        const invoicesRes = await fetch(`/api/cora/search-invoices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: access_token, start, end, page, perPage }),
+        });
+        if (!invoicesRes.ok) {
+          const err = await invoicesRes.json().catch(() => ({}));
+          throw new Error(err.error || `Erro ao buscar boletos: HTTP ${invoicesRes.status}`);
+        }
+        const invoicesData = await invoicesRes.json();
+        const items = invoicesData.items || invoicesData.invoices || [];
+        if (!Array.isArray(items)) throw new Error('Resposta inválida da API Cora');
+
+        allInvoices.push(...items);
+        console.log(`[Cora Sync] Page ${page}: ${items.length} items (total so far: ${allInvoices.length}/${invoicesData.totalItems || '?'})`);
+
+        // Stop if we got fewer than perPage or reached totalItems
+        if (items.length < perPage || allInvoices.length >= (invoicesData.totalItems || Infinity)) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      }
+
+      console.log('[Cora Sync] Total invoices fetched:', allInvoices.length);
+      if (allInvoices.length > 0) {
+        const sample = allInvoices[0];
+        console.log('[Cora Sync] Sample keys:', Object.keys(sample));
+        console.log('[Cora Sync] Sample customer_document:', sample.customer_document);
+        console.log('[Cora Sync] Sample total_amount:', sample.total_amount);
+      }
+
+      // 3. Get empresas for CNPJ matching
       const { data: empresas } = await supabase.from('cora_empresas').select('id, cnpj');
       const cnpjMap = new Map<string, string>();
       (empresas || []).forEach((e: any) => cnpjMap.set(e.cnpj.replace(/\D/g, ''), e.id));
 
-      // 5. Upsert boletos into cora_boletos
+      // 4. Upsert boletos
       let upserted = 0;
-      console.log('[Cora Sync] Total invoices to process:', invoices.length);
-      if (invoices.length > 0) {
-        console.log('[Cora Sync] Sample invoice keys:', Object.keys(invoices[0]));
-        console.log('[Cora Sync] Sample invoice:', JSON.stringify(invoices[0]).substring(0, 500));
-      }
-      for (const inv of invoices) {
-        const cnpj = (inv.customer_document || inv.customer?.document || inv.payer?.document || '').replace(/\D/g, '');
+      let errors = 0;
+      for (const inv of allInvoices) {
+        const rawCnpj = String(inv.customer_document || inv.customer?.document || inv.payer?.document || '');
+        const cnpj = rawCnpj.replace(/\D/g, '');
         const status = (inv.status || 'OPEN').toUpperCase();
         const dueDate = inv.due_date || inv.dueDate || null;
         const paidAt = inv.paid_at || inv.paidAt || null;
-        const totalCents = inv.total_amount || inv.amount?.value || inv.total_amount_cents || inv.amount || 0;
-        const invoiceId = inv.id || inv.invoice_id || '';
+        const totalCents = Number(inv.total_amount) || Number(inv.amount?.value) || Number(inv.total_amount_cents) || 0;
+        const invoiceId = String(inv.id || inv.invoice_id || '');
 
         if (!invoiceId) continue;
 
@@ -348,10 +370,16 @@ export function useSyncBoletos() {
             synced_at: new Date().toISOString(),
           }, { onConflict: 'cora_invoice_id' });
 
-        if (!error) upserted++;
+        if (error) {
+          errors++;
+          console.error('[Cora Sync] Upsert error:', error.message, 'for invoice:', invoiceId, 'cnpj:', cnpj);
+        } else {
+          upserted++;
+        }
       }
 
-      return { fetched: invoices.length, upserted };
+      console.log(`[Cora Sync] Done: ${upserted} upserted, ${errors} errors out of ${allInvoices.length}`);
+      return { fetched: allInvoices.length, upserted };
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['cora_boletos'] });
