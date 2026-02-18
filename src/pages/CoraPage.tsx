@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -640,6 +641,9 @@ function EmpresasTab() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Empresa' : 'Nova Empresa'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {editing ? 'Formulário para editar os dados da empresa Cora' : 'Formulário para cadastrar uma nova empresa Cora'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
