@@ -1,7 +1,7 @@
 import { CashFlowTransaction } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Check, Trash2, Clock, Loader2 } from 'lucide-react';
+import { Check, Trash2, Clock, Loader2, Download } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -20,10 +20,46 @@ interface TransactionsTableProps {
   onSettle?: (id: string) => void;
   onDelete?: (id: string) => void;
   onEdit?: (transaction: CashFlowTransaction) => void;
+  showExport?: boolean;
 }
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+function exportToExcel(transactions: CashFlowTransaction[]) {
+  const BOM = '\uFEFF';
+  const SEP = ';';
+  const headers = ['Data', 'Conta ID', 'Conta', 'Descrição', 'Origem/Destino', 'Tipo', 'Projetado', 'Realizado', 'Status'];
+  
+  const rows = transactions.map(tx => {
+    const futureValue = tx.type === 'income' ? (tx.future_income || 0) : (tx.future_expense || 0);
+    const executedValue = tx.type === 'income' ? (tx.income || 0) : (tx.expense || 0);
+    const hasFuture = futureValue > 0;
+    const hasExecuted = executedValue > 0;
+    const status = hasFuture && !hasExecuted ? 'Projetado' : hasFuture && hasExecuted ? 'Parcial' : 'Realizado';
+    
+    return [
+      format(parseISO(tx.date), 'dd/MM/yyyy', { locale: ptBR }),
+      tx.account_id,
+      tx.account?.name || '',
+      tx.description,
+      tx.origin_destination || '',
+      tx.type === 'income' ? 'Receita' : 'Despesa',
+      futureValue.toFixed(2).replace('.', ','),
+      executedValue.toFixed(2).replace('.', ','),
+      status,
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(SEP);
+  });
+
+  const csv = BOM + headers.join(SEP) + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fluxo-caixa-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function TransactionsTable({ 
   transactions, 
@@ -31,6 +67,7 @@ export function TransactionsTable({
   onSettle, 
   onDelete,
   onEdit,
+  showExport = false,
 }: TransactionsTableProps) {
   if (isLoading) {
     return (
@@ -50,6 +87,15 @@ export function TransactionsTable({
 
   return (
     <Card>
+      {showExport && transactions.length > 0 && (
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">{transactions.length} lançamento(s)</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => exportToExcel(transactions)}>
+            <Download className="mr-2 h-4 w-4" />
+            Exportar Excel
+          </Button>
+        </CardHeader>
+      )}
       <CardContent className="p-0">
         <Table>
           <TableHeader>

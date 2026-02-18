@@ -287,6 +287,7 @@ export function FinancialNesconPage() {
             onSettle={(id) => settleTransaction.mutate(id)}
             onDelete={(id) => deleteTransaction.mutate(id)}
             onEdit={openEditTransaction}
+            showExport
           />
         </TabsContent>
 
