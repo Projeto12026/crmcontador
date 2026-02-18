@@ -197,6 +197,83 @@ export function useCoraBoletos(competenciaAno?: number, competenciaMes?: number)
   });
 }
 
+// ---- Sync Empresas from CRM ----
+
+export function useSyncEmpresasFromCRM() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      // 1. Fetch active clients with active contracts
+      const { data: contractsData, error: contractsError } = await supabase
+        .from('contracts')
+        .select('client_id, monthly_value, billing_day, clients(id, name, document, phone, email)')
+        .eq('status', 'active')
+        .not('client_id', 'is', null);
+      if (contractsError) throw contractsError;
+
+      // 2. Fetch existing cora_empresas CNPJs
+      const { data: existing, error: existingError } = await supabase
+        .from('cora_empresas')
+        .select('cnpj');
+      if (existingError) throw existingError;
+
+      const existingCnpjs = new Set((existing || []).map(e => e.cnpj.replace(/\D/g, '')));
+
+      // 3. Build new entries (skip duplicates by CNPJ)
+      const newEntries: CoraEmpresaFormData[] = [];
+      const seen = new Set<string>();
+
+      for (const contract of contractsData || []) {
+        const client = contract.clients as any;
+        if (!client?.document) continue;
+        const cnpjClean = client.document.replace(/\D/g, '');
+        if (cnpjClean.length !== 14) continue; // skip CPFs
+        if (existingCnpjs.has(cnpjClean) || seen.has(cnpjClean)) continue;
+        seen.add(cnpjClean);
+
+        newEntries.push({
+          client_id: client.id,
+          client_name: client.name,
+          cnpj: cnpjClean,
+          telefone: client.phone || '',
+          email: client.email || '',
+          dia_vencimento: contract.billing_day || 15,
+          valor_mensal: contract.monthly_value || 0,
+          forma_envio: 'WHATSAPP',
+          is_active: true,
+        });
+      }
+
+      if (newEntries.length === 0) {
+        return { inserted: 0, total: existingCnpjs.size };
+      }
+
+      // 4. Insert in batches of 50
+      let inserted = 0;
+      for (let i = 0; i < newEntries.length; i += 50) {
+        const batch = newEntries.slice(i, i + 50);
+        const { error } = await supabase.from('cora_empresas').insert(batch);
+        if (error) throw error;
+        inserted += batch.length;
+      }
+
+      return { inserted, total: existingCnpjs.size + inserted };
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['cora_empresas'] });
+      if (result.inserted === 0) {
+        toast({ title: 'Nenhuma nova empresa para sincronizar', description: `${result.total} empresas já cadastradas.` });
+      } else {
+        toast({ title: `${result.inserted} empresas sincronizadas!`, description: `Total: ${result.total} empresas no Cora.` });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro ao sincronizar empresas', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 // ---- Envios (logs) ----
 
 export interface CoraEnvio {
