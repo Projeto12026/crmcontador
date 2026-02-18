@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
-import { Client, ClientFormData, ClientStatus } from '@/types/crm';
+import { Client, ClientFormData, ClientStatus, AcquisitionChannel } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -63,6 +63,7 @@ export function ClientsPage() {
     zip_code: '',
     notes: '',
     status: 'active',
+    acquisition_source: undefined,
   });
   const [statusFilter, setStatusFilter] = useState<ClientStatus | 'all'>('all');
 
@@ -73,6 +74,17 @@ export function ClientsPage() {
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const acquisitionChannelLabels: Record<AcquisitionChannel, string> = {
+    whatsapp: 'WhatsApp',
+    social_media: 'Mídias Sociais',
+    website_form: 'Formulário/Site',
+    referral: 'Indicação',
+    direct_prospecting: 'Prospecção Direta',
+    google_ads: 'Google Ads',
+    events: 'Eventos',
+    other: 'Outro',
+  };
 
   const openNewDialog = () => {
     setEditingClient(null);
@@ -89,6 +101,7 @@ export function ClientsPage() {
       zip_code: '',
       notes: '',
       status: 'active',
+      acquisition_source: undefined,
     });
     setIsOpen(true);
   };
@@ -108,6 +121,7 @@ export function ClientsPage() {
       zip_code: client.zip_code || '',
       notes: client.notes || '',
       status: client.status || 'active',
+      acquisition_source: client.acquisition_source || undefined,
     });
     setIsOpen(true);
   };
@@ -319,7 +333,7 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="notes">Observações</Label>
                 <Textarea
@@ -341,6 +355,23 @@ export function ClientsPage() {
                     <SelectItem value="active">Ativo</SelectItem>
                     <SelectItem value="inactive">Inativo</SelectItem>
                     <SelectItem value="blocked">Bloqueado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Canal de Entrada</Label>
+                <Select 
+                  value={formData.acquisition_source || '_none'} 
+                  onValueChange={(v) => setFormData({ ...formData, acquisition_source: v === '_none' ? undefined : v as AcquisitionChannel })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Não informado</SelectItem>
+                    {Object.entries(acquisitionChannelLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
