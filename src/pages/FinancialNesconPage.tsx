@@ -78,7 +78,7 @@ export function FinancialNesconPage() {
     source: 'nescon',
   });
 
-  const projectionEndDate = format(addMonths(startOfMonth(new Date(projectionStartDate)), projectionMonths), 'yyyy-MM-dd');
+  const projectionEndDate = format(endOfMonth(addMonths(startOfMonth(new Date(projectionStartDate)), projectionMonths - 1)), 'yyyy-MM-dd');
   const { data: projectionTransactions, isLoading: loadingProjection } = useCashFlowTransactions({
     startDate: projectionStartDate,
     endDate: projectionEndDate,
