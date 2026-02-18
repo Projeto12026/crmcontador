@@ -667,51 +667,53 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
 
         {/* Company list */}
         {empresasPendentes.length > 0 ? (
-          <ScrollArea className="max-h-[400px] border rounded-lg">
-            <div className="divide-y">
-              {empresasPendentes.map(emp => {
-                const dias = getDiasAtraso(emp);
-                const nome = emp.client?.name || emp.client_name || emp.cnpj;
-                return (
-                  <label
-                    key={emp.id}
-                    className="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors"
-                  >
-                    <Checkbox
-                      checked={empresasSelecionadas.has(emp.id)}
-                      onCheckedChange={(checked) => handleSelecionarEmpresa(emp.id, !!checked)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{nome}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{emp.cnpj}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {emp.boletoStatus === 'LATE' && (
-                        <Badge variant="outline" className="bg-red-500/10 text-red-700 text-[10px]">
-                          <AlertTriangle className="h-3 w-3 mr-1" />
-                          Atrasado{dias != null ? ` ${dias}d` : ''}
-                        </Badge>
-                      )}
-                      {(emp.boletoStatus === 'OPEN' || emp.boletoStatus === 'UNKNOWN' || emp.boletoStatus === 'PENDING') && (
-                        <Badge variant="outline" className="bg-blue-500/10 text-blue-700 text-[10px]">
-                          <Clock className="h-3 w-3 mr-1" />
-                          Em Aberto
-                        </Badge>
-                      )}
-                      {emp.telefone ? (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {emp.telefone}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-destructive">Sem telefone</span>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </ScrollArea>
+          <div className="border rounded-lg overflow-hidden">
+            <ScrollArea className="h-[500px]">
+              <div className="divide-y">
+                {empresasPendentes.map(emp => {
+                  const dias = getDiasAtraso(emp);
+                  const nome = emp.client?.name || emp.client_name || emp.cnpj;
+                  return (
+                    <label
+                      key={emp.id}
+                      className="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                    >
+                      <Checkbox
+                        checked={empresasSelecionadas.has(emp.id)}
+                        onCheckedChange={(checked) => handleSelecionarEmpresa(emp.id, !!checked)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{nome}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{emp.cnpj}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {emp.boletoStatus === 'LATE' && (
+                          <Badge variant="outline" className="bg-red-500/10 text-red-700 text-[10px]">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Atrasado{dias != null ? ` ${dias}d` : ''}
+                          </Badge>
+                        )}
+                        {(emp.boletoStatus === 'OPEN' || emp.boletoStatus === 'UNKNOWN' || emp.boletoStatus === 'PENDING') && (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 text-[10px]">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Em Aberto
+                          </Badge>
+                        )}
+                        {emp.telefone ? (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {emp.telefone}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-destructive">Sem telefone</span>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
         ) : (
           <Alert>
             <Info className="h-4 w-4" />
