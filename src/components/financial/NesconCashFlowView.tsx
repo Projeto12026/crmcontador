@@ -638,6 +638,11 @@ export function NesconCashFlowView() {
     return result;
   }, [hasLocalFilters, rawSummary, filteredTransactions]);
 
+  const grandTotalProjectedExpense = useMemo(() => {
+    if (!transactions) return undefined;
+    return transactions.reduce((sum, tx) => sum + Number(tx.future_expense || 0), 0);
+  }, [transactions]);
+
   const resetFilters = () => {
     setFilters({
       startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -688,7 +693,7 @@ export function NesconCashFlowView() {
             onReset={resetFilters}
           />
           {summary && (
-            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={rawSummary?.projectedExpense} />
+            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
           )}
           <TransactionsTable
             transactions={filteredTransactions}
