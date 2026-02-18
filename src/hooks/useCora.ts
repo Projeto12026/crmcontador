@@ -281,14 +281,8 @@ export function useSyncBoletos() {
   const { toast } = useToast();
   return useMutation({
     mutationFn: async ({ competenciaAno, competenciaMes }: { competenciaAno: number; competenciaMes: number }) => {
-      // 1. Get backend URL from config
-      const { data: configs } = await supabase.from('cora_config').select('*');
-      const apiConfig = configs?.find((c: any) => c.chave === 'cora_api');
-      const backendUrl = (apiConfig?.valor as any)?.backend_token_url?.replace(/\/get-token$/, '');
-      if (!backendUrl) throw new Error('Configure a URL do backend em Parâmetros antes de sincronizar.');
-
-      // 2. Get token via proxy
-      const tokenRes = await fetch(`${backendUrl}/api/cora/get-token`, { method: 'POST' });
+      // 1. Get token via proxy (URL relativa - nginx faz reverse proxy para cora-proxy)
+      const tokenRes = await fetch(`/api/cora/get-token`, { method: 'POST' });
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({}));
         throw new Error(err.error || `Erro ao obter token: HTTP ${tokenRes.status}`);
@@ -296,12 +290,12 @@ export function useSyncBoletos() {
       const { access_token } = await tokenRes.json();
       if (!access_token) throw new Error('Token vazio retornado pelo proxy');
 
-      // 3. Search invoices for the competência period
+      // 2. Search invoices for the competência period
       const start = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-01`;
       const lastDay = new Date(competenciaAno, competenciaMes, 0).getDate();
       const end = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-${lastDay}`;
 
-      const invoicesRes = await fetch(`${backendUrl}/api/cora/search-invoices`, {
+      const invoicesRes = await fetch(`/api/cora/search-invoices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: access_token, start, end }),

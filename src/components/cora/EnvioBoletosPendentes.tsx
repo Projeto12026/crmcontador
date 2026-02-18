@@ -124,11 +124,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
     } catch { /* ignore */ }
   }, []);
 
-  // Get backend URL and Wascript config from config
-  const backendUrl = useMemo(() => {
-    const api = configs?.find(c => c.chave === 'cora_api');
-    return (api?.valor as any)?.backend_token_url?.replace(/\/get-token$/, '') || '';
-  }, [configs]);
+  // Backend URL is now automatic via nginx reverse proxy (relative URLs)
+  const backendUrl = '';
 
   const wascriptConfig = useMemo(() => {
     const wpp = configs?.find(c => c.chave === 'whatsapp');
@@ -258,10 +255,6 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       toast({ title: 'Selecione ao menos uma empresa', variant: 'destructive' });
       return;
     }
-    if (!backendUrl) {
-      toast({ title: 'Configure a URL do backend em Parâmetros', variant: 'destructive' });
-      return;
-    }
 
     setEnviando(true);
     setResultado(null);
@@ -370,10 +363,6 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
   const handleEnviarLembretesSelecionados = async () => {
     if (empresasSelecionadas.size === 0) {
       toast({ title: 'Selecione ao menos uma empresa', variant: 'destructive' });
-      return;
-    }
-    if (!backendUrl) {
-      toast({ title: 'Configure a URL do backend em Parâmetros', variant: 'destructive' });
       return;
     }
 
