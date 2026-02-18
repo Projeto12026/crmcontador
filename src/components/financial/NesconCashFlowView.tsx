@@ -42,10 +42,11 @@ const CORA_THRESHOLD = 14000;
  * Applies the R$ 2,800 revenue adjustment to the summary.
  */
 function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
+  // Only apply the adjustment when executed income exceeds the threshold
+  if (summary.executedIncome <= CORA_THRESHOLD) return summary;
   return {
     ...summary,
     executedIncome: summary.executedIncome - AJUSTE_RECEITAS,
-    projectedIncome: summary.projectedIncome - AJUSTE_RECEITAS,
     totalIncome: summary.totalIncome - AJUSTE_RECEITAS,
     balance: summary.balance - AJUSTE_RECEITAS,
     executedBalance: summary.executedBalance - AJUSTE_RECEITAS,
@@ -365,7 +366,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
     return Math.max(1, differenceInMonths(e, s) + 1);
   }, [startDate, endDate]);
 
-  const projectedRevenue = (contractRevenue.total - AJUSTE_RECEITAS) * filterMonths;
+  const projectedRevenue = contractRevenue.total * filterMonths;
 
   // Query Cora boletos paid for these CNPJs within the period
   const { data: coraPaid } = useQuery({
