@@ -297,10 +297,11 @@ export function useSyncBoletos() {
 
       const allInvoices: any[] = [];
       let page = 0;
-      const perPage = 100;
-      let hasMore = true;
+      const perPage = 20; // Cora API returns max 20 per page
+      let totalItems = Infinity;
 
-      while (hasMore) {
+      while (allInvoices.length < totalItems) {
+        const offset = page * perPage;
         const invoicesRes = await fetch(`/api/cora/search-invoices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -314,15 +315,18 @@ export function useSyncBoletos() {
         const items = invoicesData.items || invoicesData.invoices || [];
         if (!Array.isArray(items)) throw new Error('Resposta inválida da API Cora');
 
-        allInvoices.push(...items);
-        console.log(`[Cora Sync] Page ${page}: ${items.length} items (total so far: ${allInvoices.length}/${invoicesData.totalItems || '?'})`);
-
-        // Stop if we got fewer than perPage or reached totalItems
-        if (items.length < perPage || allInvoices.length >= (invoicesData.totalItems || Infinity)) {
-          hasMore = false;
-        } else {
-          page++;
+        // Capture totalItems from first response
+        if (invoicesData.totalItems != null) {
+          totalItems = invoicesData.totalItems;
         }
+
+        allInvoices.push(...items);
+        console.log(`[Cora Sync] Page ${page}: ${items.length} items (total so far: ${allInvoices.length}/${totalItems})`);
+
+        // Stop if no more items returned (safety)
+        if (items.length === 0) break;
+
+        page++;
       }
 
       console.log('[Cora Sync] Total invoices fetched:', allInvoices.length);
