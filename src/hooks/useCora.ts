@@ -316,11 +316,11 @@ export function useSyncBoletos() {
       // 5. Upsert boletos into cora_boletos
       let upserted = 0;
       for (const inv of invoices) {
-        const cnpj = (inv.customer?.document || inv.payer?.document || '').replace(/\D/g, '');
+        const cnpj = (inv.customer_document || inv.customer?.document || inv.payer?.document || '').replace(/\D/g, '');
         const status = (inv.status || 'OPEN').toUpperCase();
         const dueDate = inv.due_date || inv.dueDate || null;
         const paidAt = inv.paid_at || inv.paidAt || null;
-        const totalCents = inv.amount?.value || inv.total_amount_cents || inv.amount || 0;
+        const totalCents = inv.total_amount || inv.amount?.value || inv.total_amount_cents || inv.amount || 0;
         const invoiceId = inv.id || inv.invoice_id || '';
 
         if (!invoiceId) continue;
