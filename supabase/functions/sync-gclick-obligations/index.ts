@@ -55,7 +55,7 @@ async function fetchTasks(accessToken: string, params: Record<string, string>): 
   let page = 0;
   let hasMore = true;
 
-  while (hasMore && page < 20) {
+  while (hasMore && page < 100) {
     const queryParams = new URLSearchParams({ ...params, size: '100', page: page.toString() });
     
     const response = await fetch(`${GCLICK_API_URL}/tarefas?${queryParams}`, {
@@ -146,9 +146,23 @@ serve(async (req) => {
     const allTasks = await fetchTasks(accessToken, params);
     console.log(`Fetched ${allTasks.length} tasks from API`);
 
-    // Filter by department on our side since the API may not filter correctly
+    // Log sample tasks to debug structure
+    if (allTasks.length > 0) {
+      const sample = allTasks.slice(0, 3).map(t => ({
+        id: t.id, nome: t.nome,
+        departamento: t.departamento,
+        obrigacao: t.obrigacao,
+        keys: Object.keys(t),
+      }));
+      console.log('Sample tasks:', JSON.stringify(sample));
+    }
+
+    // Filter by department - check both departamento and obrigacao.departamento
     const tasks = type === 'folha_pagamento' 
-      ? allTasks.filter(t => (t.departamento?.nome || '').toLowerCase().includes('pessoal'))
+      ? allTasks.filter(t => {
+          const dept = t.departamento?.nome || t.obrigacao?.departamento?.nome || '';
+          return dept.toLowerCase().includes('pessoal');
+        })
       : allTasks;
     console.log(`After department filter: ${tasks.length} tasks`);
 
