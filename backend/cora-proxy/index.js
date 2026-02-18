@@ -94,10 +94,16 @@ app.post('/api/cora/get-token', async (req, res) => {
         });
       });
 
-      request.on('error', reject);
+    request.on('error', (err) => {
+        console.error('mTLS request error details:', err.code, err.message);
+        reject(err);
+      });
       request.write(body.toString());
       request.end();
     });
+
+    console.log('Token response status:', response.status);
+    console.log('Token response body:', response.body.substring(0, 500));
 
     const parsed = JSON.parse(response.body);
 
@@ -110,8 +116,8 @@ app.post('/api/cora/get-token', async (req, res) => {
 
     res.json(parsed);
   } catch (error) {
-    console.error('Erro get-token:', error);
-    res.status(500).json({ error: 'Erro interno ao obter token', detail: error.message });
+    console.error('Erro get-token:', error.code, error.message, error.stack);
+    res.status(500).json({ error: 'Erro interno ao obter token', detail: error.message, code: error.code });
   }
 });
 
