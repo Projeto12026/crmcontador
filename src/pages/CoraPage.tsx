@@ -9,6 +9,7 @@ import {
   useCoraBoletos,
   useCoraMessageTemplates,
   useUpdateCoraMessageTemplate,
+  useSyncEmpresasFromCRM,
   CoraEmpresa,
   CoraEmpresaFormData,
   CoraBoleto,
@@ -486,6 +487,7 @@ function EmpresasTab() {
   const createEmpresa = useCreateCoraEmpresa();
   const updateEmpresa = useUpdateCoraEmpresa();
   const deleteEmpresa = useDeleteCoraEmpresa();
+  const syncFromCRM = useSyncEmpresasFromCRM();
 
   const [formData, setFormData] = useState<CoraEmpresaFormData>({
     client_id: null,
@@ -558,10 +560,16 @@ function EmpresasTab() {
         <div className="text-sm text-muted-foreground">
           <strong>Total Mensal (ativas):</strong> {formatCurrency(totalMensal)} · {empresas?.filter(e => e.is_active).length || 0} empresas
         </div>
-        <Button onClick={openNew}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Empresa
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => syncFromCRM.mutate()} disabled={syncFromCRM.isPending}>
+            {syncFromCRM.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Sincronizar do CRM
+          </Button>
+          <Button onClick={openNew}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Empresa
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
