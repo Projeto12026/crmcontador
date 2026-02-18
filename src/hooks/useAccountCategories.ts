@@ -14,6 +14,7 @@ export function useAccountCategories() {
           *,
           financial_accounts(*)
         `)
+        .order('group_number')
         .order('id');
 
       if (error) throw error;
@@ -63,6 +64,19 @@ export function useAccountCategories() {
         }
       });
 
+      // Ordenar numericamente pelo group_number e id
+      const numericSort = (a: AccountCategory, b: AccountCategory) => a.group_number - b.group_number;
+      rootCategories.sort(numericSort);
+      rootCategories.forEach(cat => {
+        if (cat.subcategories?.length) {
+          cat.subcategories.sort((a, b) => {
+            const numA = parseFloat(a.id.replace(/^F/, '')) || 0;
+            const numB = parseFloat(b.id.replace(/^F/, '')) || 0;
+            return numA - numB;
+          });
+        }
+      });
+
       return rootCategories;
     },
   });
@@ -93,6 +107,7 @@ export function useAccountCategoriesFlat() {
       const { data, error } = await supabase
         .from('account_categories')
         .select('*')
+        .order('group_number')
         .order('id');
 
       if (error) throw error;
