@@ -164,7 +164,7 @@ serve(async (req) => {
       };
 
       // Use REST API directly instead of SDK
-      const upsertResponse = await fetch(`${supabaseUrl}/rest/v1/payroll_obligations`, {
+      const upsertResponse = await fetch(`${supabaseUrl}/rest/v1/payroll_obligations?on_conflict=gclick_id`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${supabaseKey}`,
