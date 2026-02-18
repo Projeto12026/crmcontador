@@ -151,7 +151,8 @@ function NesconProjectionView({
 }) {
   const months = useMemo(() => {
     const result: Date[] = [];
-    const start = startOfMonth(parseISO(startDate));
+    const [year, month] = startDate.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
     for (let i = 0; i < monthsToShow; i++) {
       result.push(addMonths(start, i));
     }
