@@ -274,6 +274,99 @@ export function useSyncEmpresasFromCRM() {
   });
 }
 
+// ---- Sync Boletos from Proxy ----
+
+export function useSyncBoletos() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ competenciaAno, competenciaMes }: { competenciaAno: number; competenciaMes: number }) => {
+      // 1. Get backend URL from config
+      const { data: configs } = await supabase.from('cora_config').select('*');
+      const apiConfig = configs?.find((c: any) => c.chave === 'cora_api');
+      const backendUrl = (apiConfig?.valor as any)?.backend_token_url?.replace(/\/get-token$/, '');
+      if (!backendUrl) throw new Error('Configure a URL do backend em Parâmetros antes de sincronizar.');
+
+      // 2. Get token via proxy
+      const tokenRes = await fetch(`${backendUrl}/api/cora/get-token`, { method: 'POST' });
+      if (!tokenRes.ok) {
+        const err = await tokenRes.json().catch(() => ({}));
+        throw new Error(err.error || `Erro ao obter token: HTTP ${tokenRes.status}`);
+      }
+      const { access_token } = await tokenRes.json();
+      if (!access_token) throw new Error('Token vazio retornado pelo proxy');
+
+      // 3. Search invoices for the competência period
+      const start = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-01`;
+      const lastDay = new Date(competenciaAno, competenciaMes, 0).getDate();
+      const end = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-${lastDay}`;
+
+      const invoicesRes = await fetch(`${backendUrl}/api/cora/search-invoices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: access_token, start, end }),
+      });
+      if (!invoicesRes.ok) {
+        const err = await invoicesRes.json().catch(() => ({}));
+        throw new Error(err.error || `Erro ao buscar boletos: HTTP ${invoicesRes.status}`);
+      }
+      const invoicesData = await invoicesRes.json();
+      const invoices = invoicesData.items || invoicesData.invoices || invoicesData || [];
+      if (!Array.isArray(invoices)) throw new Error('Resposta inválida da API Cora');
+
+      // 4. Get empresas for CNPJ matching
+      const { data: empresas } = await supabase.from('cora_empresas').select('id, cnpj');
+      const cnpjMap = new Map<string, string>();
+      (empresas || []).forEach((e: any) => cnpjMap.set(e.cnpj.replace(/\D/g, ''), e.id));
+
+      // 5. Upsert boletos into cora_boletos
+      let upserted = 0;
+      for (const inv of invoices) {
+        const cnpj = (inv.customer?.document || inv.payer?.document || '').replace(/\D/g, '');
+        const status = (inv.status || 'OPEN').toUpperCase();
+        const dueDate = inv.due_date || inv.dueDate || null;
+        const paidAt = inv.paid_at || inv.paidAt || null;
+        const totalCents = inv.amount?.value || inv.total_amount_cents || inv.amount || 0;
+        const invoiceId = inv.id || inv.invoice_id || '';
+
+        if (!invoiceId) continue;
+
+        const empresaId = cnpjMap.get(cnpj) || null;
+
+        const { error } = await supabase
+          .from('cora_boletos')
+          .upsert({
+            cora_invoice_id: invoiceId,
+            empresa_id: empresaId,
+            cnpj: cnpj,
+            status: status,
+            total_amount_cents: totalCents,
+            due_date: dueDate,
+            paid_at: paidAt,
+            competencia_mes: competenciaMes,
+            competencia_ano: competenciaAno,
+            raw_json: inv as any,
+            synced_at: new Date().toISOString(),
+          }, { onConflict: 'cora_invoice_id' });
+
+        if (!error) upserted++;
+      }
+
+      return { fetched: invoices.length, upserted };
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['cora_boletos'] });
+      toast({
+        title: `Sincronização concluída!`,
+        description: `${result.fetched} boletos encontrados, ${result.upserted} salvos/atualizados.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro na sincronização', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 // ---- Envios (logs) ----
 
 export interface CoraEnvio {

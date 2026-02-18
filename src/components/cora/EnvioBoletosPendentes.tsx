@@ -124,10 +124,18 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
     } catch { /* ignore */ }
   }, []);
 
-  // Get backend URL from config
+  // Get backend URL and Wascript config from config
   const backendUrl = useMemo(() => {
     const api = configs?.find(c => c.chave === 'cora_api');
     return (api?.valor as any)?.backend_token_url?.replace(/\/get-token$/, '') || '';
+  }, [configs]);
+
+  const wascriptConfig = useMemo(() => {
+    const wpp = configs?.find(c => c.chave === 'whatsapp');
+    return {
+      apiUrl: (wpp?.valor as any)?.api_url || '',
+      token: (wpp?.valor as any)?.token || '',
+    };
   }, [configs]);
 
   const competencia = `${String(competenciaMes).padStart(2, '0')}/${competenciaAno}`;
@@ -290,6 +298,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             invoiceId: empresa.boleto?.cora_invoice_id || undefined,
             mensagem,
             templateKey,
+            wascriptApiUrl: wascriptConfig.apiUrl,
+            wascriptToken: wascriptConfig.token,
           }),
         });
 
@@ -414,6 +424,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             },
             mensagem,
             templateKey,
+            wascriptApiUrl: wascriptConfig.apiUrl,
+            wascriptToken: wascriptConfig.token,
           }),
         });
 

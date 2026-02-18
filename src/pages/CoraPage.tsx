@@ -10,6 +10,7 @@ import {
   useCoraMessageTemplates,
   useUpdateCoraMessageTemplate,
   useSyncEmpresasFromCRM,
+  useSyncBoletos,
   CoraEmpresa,
   CoraEmpresaFormData,
   CoraBoleto,
@@ -142,6 +143,7 @@ function DashboardTab() {
 
   const { data: empresas, isLoading: loadingEmpresas } = useCoraEmpresas();
   const { data: boletos, isLoading: loadingBoletos } = useCoraBoletos(competenciaAno, competenciaMes);
+  const syncBoletos = useSyncBoletos();
 
   const activeEmpresas = useMemo(() => empresas?.filter(e => e.is_active) || [], [empresas]);
 
@@ -232,8 +234,13 @@ function DashboardTab() {
           </Select>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled>
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncBoletos.isPending}
+            onClick={() => syncBoletos.mutate({ competenciaAno, competenciaMes })}
+          >
+            {syncBoletos.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Sincronizar
           </Button>
           <Button variant="outline" size="sm" disabled>
