@@ -26,6 +26,8 @@ const CHANNEL_LABELS: Record<AcquisitionChannel, string> = {
   referral: 'Indicação',
   direct_prospecting: 'Prospecção Direta',
   google_ads: 'Google Ads',
+  google_my_business: 'Google Meu Negócio',
+  site: 'Site',
   events: 'Eventos/Networking',
   other: 'Outros',
 };
@@ -37,11 +39,13 @@ const CHANNEL_COLORS: Record<AcquisitionChannel, string> = {
   referral: '#F59E0B',
   direct_prospecting: '#8B5CF6',
   google_ads: '#EA4335',
+  google_my_business: '#4285F4',
+  site: '#34A853',
   events: '#06B6D4',
   other: '#6B7280',
 };
 
-const MARKETING_CHANNELS: AcquisitionChannel[] = ['whatsapp', 'social_media', 'website_form', 'google_ads', 'events', 'other'];
+const MARKETING_CHANNELS: AcquisitionChannel[] = ['whatsapp', 'social_media', 'website_form', 'google_ads', 'google_my_business', 'site', 'events', 'other'];
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);

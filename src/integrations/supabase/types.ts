@@ -1548,6 +1548,8 @@ export type Database = {
         | "google_ads"
         | "events"
         | "other"
+        | "google_my_business"
+        | "site"
       app_role: "admin" | "finance" | "user"
       client_status: "active" | "inactive" | "blocked"
       contract_status:
@@ -1713,6 +1715,8 @@ export const Constants = {
         "google_ads",
         "events",
         "other",
+        "google_my_business",
+        "site",
       ],
       app_role: ["admin", "finance", "user"],
       client_status: ["active", "inactive", "blocked"],
