@@ -129,15 +129,23 @@ app.post('/api/cora/search-invoices', async (req, res) => {
     if (!token) return res.status(400).json({ error: 'Token obrigatório' });
 
     const url = `https://api.cora.com.br/v2/invoices/?start=${start}&end=${end}`;
+    console.log('Fetching invoices URL:', url);
+
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const data = await response.json();
+    const rawBody = await response.text();
+    console.log('Invoices response status:', response.status);
+    console.log('Invoices response body:', rawBody.substring(0, 1000));
+
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Erro ao buscar invoices', detail: data });
+      let detail;
+      try { detail = JSON.parse(rawBody); } catch { detail = rawBody; }
+      return res.status(response.status).json({ error: 'Erro ao buscar invoices', detail });
     }
 
+    const data = JSON.parse(rawBody);
     res.json(data);
   } catch (error) {
     console.error('Erro search-invoices:', error);
