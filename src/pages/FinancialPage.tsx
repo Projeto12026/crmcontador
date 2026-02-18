@@ -145,6 +145,12 @@ export function FinancialPage() {
     return result;
   }, [hasLocalFilters, rawSummary, filteredTransactions]);
 
+  // Total de despesas projetadas incluindo grupos excluídos (100, 200)
+  const grandTotalProjectedExpense = useMemo(() => {
+    if (!transactions) return undefined;
+    return transactions.reduce((sum, tx) => sum + Number(tx.future_expense || 0), 0);
+  }, [transactions]);
+
   const resetFilters = () => {
     setFilters({
       startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -280,7 +286,7 @@ export function FinancialPage() {
             onReset={resetFilters}
           />
           {summary && (
-            <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={rawSummary?.projectedExpense} />
+            <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
           )}
           <TransactionsTable
             transactions={filteredTransactions}
