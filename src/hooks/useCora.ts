@@ -315,6 +315,11 @@ export function useSyncBoletos() {
 
       // 5. Upsert boletos into cora_boletos
       let upserted = 0;
+      console.log('[Cora Sync] Total invoices to process:', invoices.length);
+      if (invoices.length > 0) {
+        console.log('[Cora Sync] Sample invoice keys:', Object.keys(invoices[0]));
+        console.log('[Cora Sync] Sample invoice:', JSON.stringify(invoices[0]).substring(0, 500));
+      }
       for (const inv of invoices) {
         const cnpj = (inv.customer_document || inv.customer?.document || inv.payer?.document || '').replace(/\D/g, '');
         const status = (inv.status || 'OPEN').toUpperCase();
