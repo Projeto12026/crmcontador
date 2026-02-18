@@ -381,7 +381,8 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
     return Math.max(1, differenceInMonths(e, s) + 1);
   }, [startDate, endDate]);
 
-  const projectedRevenue = contractRevenue.total * filterMonths;
+  const adjustedMonthlyRevenue = aplicarAjusteReceita(contractRevenue.total);
+  const projectedRevenue = adjustedMonthlyRevenue * filterMonths;
 
   // Query Cora boletos paid for these CNPJs within the period
   const { data: coraPaid } = useQuery({
@@ -485,7 +486,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{formatCurrency(projectedRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {formatCurrency(contractRevenue.total)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'}
+              {formatCurrency(adjustedMonthlyRevenue)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'} (ajuste de {formatCurrency(AJUSTE_RECEITAS)})
             </p>
             <p className="text-xs text-muted-foreground">
               {nesconContracts?.length || 0} contratos ativos
