@@ -366,7 +366,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
     return Math.max(1, differenceInMonths(e, s) + 1);
   }, [startDate, endDate]);
 
-  const projectedRevenue = contractRevenue.total * filterMonths;
+  const projectedRevenue = (contractRevenue.total - AJUSTE_RECEITAS) * filterMonths;
 
   // Query Cora boletos paid for these CNPJs within the period
   const { data: coraPaid } = useQuery({
