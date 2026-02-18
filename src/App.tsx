@@ -17,6 +17,7 @@ import { ProcessesPage } from "./pages/ProcessesPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { PayrollPage } from "./pages/PayrollPage";
 import { FinancialPage } from "./pages/FinancialPage";
+import { FinancialNesconPage } from "./pages/FinancialNesconPage";
 import { PricingPage } from "./pages/PricingPage";
 import { CoraPage } from "./pages/CoraPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -50,6 +51,7 @@ function ProtectedRoutes() {
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/folha-pagamento" element={<PayrollPage />} />
         <Route path="/financeiro" element={<FinancialPage />} />
+        <Route path="/financeiro-nescon" element={<FinancialNesconPage />} />
         <Route path="/precificacao" element={<PricingPage />} />
         <Route path="/cora" element={<CoraPage />} />
         <Route path="/configuracoes" element={<SettingsPage />} />
