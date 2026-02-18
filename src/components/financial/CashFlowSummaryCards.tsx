@@ -5,12 +5,13 @@ import { TrendingUp, TrendingDown, Wallet, Clock, CheckCircle } from 'lucide-rea
 interface CashFlowSummaryCardsProps {
   summary: CashFlowSummary;
   isLoading?: boolean;
+  totalProjectedExpense?: number;
 }
 
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-export function CashFlowSummaryCards({ summary, isLoading }: CashFlowSummaryCardsProps) {
+export function CashFlowSummaryCards({ summary, isLoading, totalProjectedExpense }: CashFlowSummaryCardsProps) {
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
@@ -75,6 +76,9 @@ export function CashFlowSummaryCards({ summary, isLoading }: CashFlowSummaryCard
           <div className="text-2xl font-bold text-orange-500">
             {formatCurrency(summary.projectedExpense)}
           </div>
+          {totalProjectedExpense !== undefined && totalProjectedExpense !== summary.projectedExpense && (
+            <p className="text-xs text-muted-foreground mt-1">* Total: {formatCurrency(totalProjectedExpense)}</p>
+          )}
         </CardContent>
       </Card>
       

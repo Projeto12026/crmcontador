@@ -55,7 +55,7 @@ function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
 // ============================================================
 // SUB-COMPONENT: NesconSummaryCards (with adjustment)
 // ============================================================
-function NesconSummaryCards({ summary, isLoading }: { summary: CashFlowSummary; isLoading?: boolean }) {
+function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number }) {
   const adjusted = adjustSummary(summary);
 
   if (isLoading) {
@@ -112,6 +112,9 @@ function NesconSummaryCards({ summary, isLoading }: { summary: CashFlowSummary; 
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-500">{formatCurrency(adjusted.projectedExpense)}</div>
+            {totalProjectedExpense !== undefined && totalProjectedExpense !== adjusted.projectedExpense && (
+              <p className="text-xs text-muted-foreground mt-1">* Total: {formatCurrency(totalProjectedExpense)}</p>
+            )}
           </CardContent>
         </Card>
         <Card className={adjusted.executedBalance >= 0 ? 'bg-green-50 dark:bg-green-950' : 'bg-red-50 dark:bg-red-950'}>
@@ -685,7 +688,7 @@ export function NesconCashFlowView() {
             onReset={resetFilters}
           />
           {summary && (
-            <NesconSummaryCards summary={summary} isLoading={loadingSummary} />
+            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={rawSummary?.projectedExpense} />
           )}
           <TransactionsTable
             transactions={filteredTransactions}

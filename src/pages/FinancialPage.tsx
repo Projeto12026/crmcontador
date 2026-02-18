@@ -280,7 +280,7 @@ export function FinancialPage() {
             onReset={resetFilters}
           />
           {summary && (
-            <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} />
+            <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={rawSummary?.projectedExpense} />
           )}
           <TransactionsTable
             transactions={filteredTransactions}
