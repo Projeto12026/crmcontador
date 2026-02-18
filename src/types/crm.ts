@@ -7,6 +7,7 @@
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type PriorityLevel = 'low' | 'medium' | 'high' | 'urgent';
 export type LeadStatus = 'prospecting' | 'contact' | 'proposal' | 'negotiation' | 'won' | 'lost';
+export type AcquisitionChannel = 'whatsapp' | 'social_media' | 'website_form' | 'referral' | 'direct_prospecting' | 'google_ads' | 'events' | 'other';
 export type ProcessStatus = 'pending' | 'in_progress' | 'awaiting_docs' | 'awaiting_client' | 'completed' | 'cancelled';
 export type ContractStatus = 'draft' | 'active' | 'suspended' | 'cancelled' | 'expired';
 export type OnboardingStatus = 'pending' | 'in_progress' | 'completed';
@@ -38,6 +39,7 @@ export interface Client {
   notes: string | null;
   is_active: boolean;
   status: ClientStatus;
+  acquisition_source: AcquisitionChannel | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,11 +84,21 @@ export interface Lead {
   email: string | null;
   phone: string | null;
   source: string | null;
+  acquisition_channel: AcquisitionChannel | null;
   status: LeadStatus;
   expected_value: number | null;
   notes: string | null;
   converted_client_id: string | null;
   lost_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarketingInvestment {
+  id: string;
+  month: string;
+  total_amount: number;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -398,6 +410,7 @@ export interface LeadFormData {
   email?: string;
   phone?: string;
   source?: string;
+  acquisition_channel?: AcquisitionChannel;
   expected_value?: number;
   notes?: string;
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useLeads, useCreateLead, useUpdateLead, useConvertLead, useDeleteLead } from '@/hooks/useLeads';
-import { Lead, LeadFormData, LeadStatus } from '@/types/crm';
+import { Lead, LeadFormData, LeadStatus, AcquisitionChannel } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +16,8 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, UserCheck, Trash2, Loader2, ArrowRight } from 'lucide-react';
+import { Plus, UserCheck, Trash2, Loader2, ArrowRight, BarChart3 } from 'lucide-react';
+import { CommercialDashboard } from '@/components/commercial/CommercialDashboard';
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   prospecting: { label: 'Prospecção', color: 'bg-slate-100 text-slate-700' },
@@ -25,9 +28,21 @@ const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
   lost: { label: 'Perdido', color: 'bg-red-100 text-red-700' },
 };
 
+const CHANNEL_OPTIONS: { value: AcquisitionChannel; label: string }[] = [
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'social_media', label: 'Mídias Sociais' },
+  { value: 'website_form', label: 'Formulário/Site' },
+  { value: 'referral', label: 'Indicação' },
+  { value: 'direct_prospecting', label: 'Prospecção Direta' },
+  { value: 'google_ads', label: 'Google Ads' },
+  { value: 'events', label: 'Eventos/Networking' },
+  { value: 'other', label: 'Outros' },
+];
+
 const funnelStages: LeadStatus[] = ['prospecting', 'contact', 'proposal', 'negotiation'];
 
 export function CommercialPage() {
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [isOpen, setIsOpen] = useState(false);
   const { data: leads, isLoading } = useLeads();
   const createLead = useCreateLead();
@@ -43,6 +58,7 @@ export function CommercialPage() {
     source: '',
     expected_value: undefined,
     notes: '',
+    acquisition_channel: undefined,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,6 +73,7 @@ export function CommercialPage() {
       source: '',
       expected_value: undefined,
       notes: '',
+      acquisition_channel: undefined,
     });
   };
 
@@ -89,112 +106,145 @@ export function CommercialPage() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          {funnelStages.map((status) => (
-            <Card key={status}>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between text-sm">
-                  <span>{statusConfig[status].label}</span>
-                  <Badge variant="secondary">{getLeadsByStatus(status).length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {getLeadsByStatus(status).map((lead) => (
-                  <div key={lead.id} className="rounded-lg border bg-card p-3 space-y-2">
-                    <div className="font-medium">{lead.company_name}</div>
-                    {lead.contact_name && (
-                      <div className="text-sm text-muted-foreground">{lead.contact_name}</div>
-                    )}
-                    {lead.expected_value && (
-                      <div className="text-sm font-medium text-green-600">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.expected_value)}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="dashboard">
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="results">Resultados</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="dashboard" className="mt-4">
+          <CommercialDashboard />
+        </TabsContent>
+
+        <TabsContent value="pipeline" className="mt-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              {funnelStages.map((status) => (
+                <Card key={status}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between text-sm">
+                      <span>{statusConfig[status].label}</span>
+                      <Badge variant="secondary">{getLeadsByStatus(status).length}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {getLeadsByStatus(status).map((lead) => (
+                      <div key={lead.id} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="font-medium">{lead.company_name}</div>
+                        {lead.contact_name && (
+                          <div className="text-sm text-muted-foreground">{lead.contact_name}</div>
+                        )}
+                        {lead.expected_value && (
+                          <div className="text-sm font-medium text-green-600">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.expected_value)}
+                          </div>
+                        )}
+                        {lead.source && (
+                          <Badge variant="outline" className="text-xs">{lead.source}</Badge>
+                        )}
+                        <div className="flex gap-1 pt-1">
+                          {status !== 'negotiation' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => moveToNextStage(lead)}
+                              title="Avançar etapa"
+                            >
+                              <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {status === 'negotiation' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => convertLead.mutate(lead.id)}
+                              title="Converter em cliente"
+                              className="text-green-600"
+                            >
+                              <UserCheck className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateLead.mutate({ id: lead.id, data: { status: 'lost' } })}
+                            title="Marcar como perdido"
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {getLeadsByStatus(status).length === 0 && (
+                      <div className="text-center py-4 text-sm text-muted-foreground">
+                        Nenhum lead
                       </div>
                     )}
-                    <div className="flex gap-1 pt-1">
-                      {status !== 'negotiation' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => moveToNextStage(lead)}
-                          title="Avançar etapa"
-                        >
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {status === 'negotiation' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => convertLead.mutate(lead.id)}
-                          title="Converter em cliente"
-                          className="text-green-600"
-                        >
-                          <UserCheck className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => updateLead.mutate({ id: lead.id, data: { status: 'lost' } })}
-                        title="Marcar como perdido"
-                        className="text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="results" className="mt-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-green-600">Ganhos ({getLeadsByStatus('won').length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {getLeadsByStatus('won').slice(0, 10).map((lead) => (
+                  <div key={lead.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <div>
+                      <span>{lead.company_name}</span>
+                      {lead.source && <Badge variant="outline" className="ml-2 text-xs">{lead.source}</Badge>}
                     </div>
+                    {lead.expected_value && (
+                      <span className="text-green-600 font-medium">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.expected_value)}
+                      </span>
+                    )}
                   </div>
                 ))}
-                {getLeadsByStatus(status).length === 0 && (
-                  <div className="text-center py-4 text-sm text-muted-foreground">
-                    Nenhum lead
-                  </div>
+                {getLeadsByStatus('won').length === 0 && (
+                  <div className="text-center py-4 text-sm text-muted-foreground">Nenhum lead ganho</div>
                 )}
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Won/Lost summary */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-green-600">Ganhos ({getLeadsByStatus('won').length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {getLeadsByStatus('won').slice(0, 5).map((lead) => (
-              <div key={lead.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                <span>{lead.company_name}</span>
-                {lead.expected_value && (
-                  <span className="text-green-600 font-medium">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.expected_value)}
-                  </span>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-red-600">Perdidos ({getLeadsByStatus('lost').length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {getLeadsByStatus('lost').slice(0, 10).map((lead) => (
+                  <div key={lead.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <div>
+                      <span className="text-muted-foreground">{lead.company_name}</span>
+                      {lead.lost_reason && <span className="ml-2 text-xs text-red-500">({lead.lost_reason})</span>}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => deleteLead.mutate(lead.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {getLeadsByStatus('lost').length === 0 && (
+                  <div className="text-center py-4 text-sm text-muted-foreground">Nenhum lead perdido</div>
                 )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-red-600">Perdidos ({getLeadsByStatus('lost').length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {getLeadsByStatus('lost').slice(0, 5).map((lead) => (
-              <div key={lead.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                <span className="text-muted-foreground">{lead.company_name}</span>
-                <Button variant="ghost" size="sm" onClick={() => deleteLead.mutate(lead.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent>
@@ -240,23 +290,41 @@ export function CommercialPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="source">Origem</Label>
+                <Label>Canal de Aquisição</Label>
+                <Select
+                  value={formData.acquisition_channel || ''}
+                  onValueChange={(v) => setFormData({ ...formData, acquisition_channel: v as AcquisitionChannel })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o canal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHANNEL_OPTIONS.map(ch => (
+                      <SelectItem key={ch.value} value={ch.value}>{ch.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="expected_value">Valor Esperado (mensal)</Label>
+                <Input
+                  id="expected_value"
+                  type="number"
+                  value={formData.expected_value || ''}
+                  onChange={(e) => setFormData({ ...formData, expected_value: e.target.value ? Number(e.target.value) : undefined })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="source">Origem (detalhe)</Label>
                 <Input
                   id="source"
                   value={formData.source}
                   onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                  placeholder="Ex: Indicação, Site..."
+                  placeholder="Ex: Instagram, amigo João..."
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="expected_value">Valor Esperado</Label>
-              <Input
-                id="expected_value"
-                type="number"
-                value={formData.expected_value || ''}
-                onChange={(e) => setFormData({ ...formData, expected_value: e.target.value ? Number(e.target.value) : undefined })}
-              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="notes">Observações</Label>
