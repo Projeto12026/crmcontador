@@ -115,6 +115,7 @@ export function PayrollPage() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string>('obrigacoes');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // Extract available years from obligations
   const availableYears = useMemo(() => {
@@ -213,14 +214,23 @@ export function PayrollPage() {
             Acompanhe as obrigações de folha de pagamento das empresas
           </p>
         </div>
-        <Button
-          onClick={() => syncGClick.mutate()}
-          disabled={syncGClick.isPending}
-          variant="outline"
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${syncGClick.isPending ? 'animate-spin' : ''}`} />
-          Sincronizar com G-Click
-        </Button>
+        <div className="flex items-center gap-4">
+          {lastSyncTime && (
+            <span className="text-xs text-muted-foreground">
+              Última sincronização: {format(lastSyncTime, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+            </span>
+          )}
+          <Button
+            onClick={() => syncGClick.mutate(undefined, {
+              onSuccess: () => setLastSyncTime(new Date()),
+            })}
+            disabled={syncGClick.isPending}
+            variant="outline"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${syncGClick.isPending ? 'animate-spin' : ''}`} />
+            Sincronizar com G-Click
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
