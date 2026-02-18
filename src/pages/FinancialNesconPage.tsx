@@ -55,10 +55,20 @@ export function FinancialNesconPage() {
     endDate: format(endOfYear(new Date()), 'yyyy-MM-dd'),
   });
 
-  // Queries
-  const { data: categories, isLoading: loadingCategories } = useAccountCategories();
-  const { data: categoriesFlat } = useAccountCategoriesFlat();
+  // Queries — filtrar categorias para mostrar apenas Nescon (grupos 1-11, sem prefixo F)
+  const { data: allCategories, isLoading: loadingCategories } = useAccountCategories();
+  const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
+
+  const categories = useMemo(() => {
+    if (!allCategories) return allCategories;
+    return allCategories.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
+  }, [allCategories]);
+
+  const categoriesFlat = useMemo(() => {
+    if (!allCategoriesFlat) return allCategoriesFlat;
+    return allCategoriesFlat.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
+  }, [allCategoriesFlat]);
   const { data: transactions, isLoading: loadingTransactions } = useCashFlowTransactions({
     startDate: filters.startDate,
     endDate: filters.endDate,

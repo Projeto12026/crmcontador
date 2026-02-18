@@ -58,10 +58,20 @@ export function FinancialPage() {
     endDate: format(endOfYear(new Date()), 'yyyy-MM-dd'),
   });
   
-  // Queries
-  const { data: categories, isLoading: loadingCategories } = useAccountCategories();
-  const { data: categoriesFlat } = useAccountCategoriesFlat();
+  // Queries — filtrar categorias para mostrar apenas Financeiro (IDs com prefixo F + grupos 1-6 e 100+)
+  const { data: allCategories, isLoading: loadingCategories } = useAccountCategories();
+  const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
+
+  const categories = useMemo(() => {
+    if (!allCategories) return allCategories;
+    return allCategories.filter(c => c.id.startsWith('F') || c.group_number <= 4 || c.group_number >= 100);
+  }, [allCategories]);
+
+  const categoriesFlat = useMemo(() => {
+    if (!allCategoriesFlat) return allCategoriesFlat;
+    return allCategoriesFlat.filter(c => c.id.startsWith('F') || c.group_number <= 4 || c.group_number >= 100);
+  }, [allCategoriesFlat]);
   const { data: transactions, isLoading: loadingTransactions } = useCashFlowTransactions({
     startDate: filters.startDate,
     endDate: filters.endDate,
