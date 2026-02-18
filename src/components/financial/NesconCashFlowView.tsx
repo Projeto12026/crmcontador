@@ -58,11 +58,12 @@ function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
 // ============================================================
 function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number }) {
   const adjusted = adjustSummary(summary);
+  const projectedBalance = adjusted.projectedIncome - adjusted.projectedExpense;
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-        {[1, 2, 3, 4, 5].map(i => (
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+        {[1, 2, 3, 4, 5, 6].map(i => (
           <Card key={i} className="animate-pulse">
             <CardHeader className="pb-2"><div className="h-4 bg-muted rounded w-20" /></CardHeader>
             <CardContent><div className="h-8 bg-muted rounded w-28" /></CardContent>
@@ -74,7 +75,7 @@ function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { sum
 
   return (
     <div className="space-y-2">
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium">Receitas Executadas</CardTitle>
@@ -122,6 +123,17 @@ function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { sum
           <CardContent>
             <div className={`text-2xl font-bold ${adjusted.executedBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(adjusted.executedBalance)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={projectedBalance >= 0 ? 'bg-blue-50 dark:bg-blue-950' : 'bg-red-50 dark:bg-red-950'}>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium">Saldo Projetado</CardTitle>
+            <TrendingUp className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${projectedBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+              {formatCurrency(projectedBalance)}
             </div>
           </CardContent>
         </Card>
