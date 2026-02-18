@@ -68,6 +68,7 @@ export function FinancialPage() {
     accountId: filters.accountId,
     type: filters.type,
     financialAccountId: filters.financialAccountId,
+    source: 'financeiro',
   });
   
   // Transações para projeção (período estendido)
@@ -75,18 +76,20 @@ export function FinancialPage() {
   const { data: projectionTransactions, isLoading: loadingProjection } = useCashFlowTransactions({
     startDate: projectionStartDate,
     endDate: projectionEndDate,
+    source: 'financeiro',
   });
 
   // Transações para parceladas (busca ampla - todos os dados)
-  const { data: allTransactions, isLoading: loadingAll } = useCashFlowTransactions({});
+  const { data: allTransactions, isLoading: loadingAll } = useCashFlowTransactions({ source: 'financeiro' });
   
   // Transações para dashboard (filtro próprio)
   const { data: dashboardTransactions, isLoading: loadingDashboard } = useCashFlowTransactions({
     startDate: dashboardFilter.startDate,
     endDate: dashboardFilter.endDate,
+    source: 'financeiro',
   });
 
-  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'financeiro');
   const { data: clients } = useClients();
 
   // Filtrar transações localmente para filtros que não estão na query
@@ -150,7 +153,7 @@ export function FinancialPage() {
   };
   
   // Mutations
-  const createTransaction = useCreateCashFlowTransaction();
+  const createTransaction = useCreateCashFlowTransaction('financeiro');
   const updateTransaction = useUpdateCashFlowTransaction();
   const settleTransaction = useSettleTransaction();
   const deleteTransaction = useDeleteCashFlowTransaction();

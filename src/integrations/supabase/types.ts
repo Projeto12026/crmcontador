@@ -66,6 +66,7 @@ export type Database = {
           notes: string | null
           origin_destination: string
           paid_by_company: boolean
+          source: string
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           value: number
@@ -86,6 +87,7 @@ export type Database = {
           notes?: string | null
           origin_destination: string
           paid_by_company?: boolean
+          source?: string
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           value: number
@@ -106,6 +108,7 @@ export type Database = {
           notes?: string | null
           origin_destination?: string
           paid_by_company?: boolean
+          source?: string
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           value?: number

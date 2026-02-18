@@ -65,22 +65,25 @@ export function FinancialNesconPage() {
     accountId: filters.accountId,
     type: filters.type,
     financialAccountId: filters.financialAccountId,
+    source: 'nescon',
   });
 
   const projectionEndDate = format(addMonths(startOfMonth(new Date(projectionStartDate)), projectionMonths), 'yyyy-MM-dd');
   const { data: projectionTransactions, isLoading: loadingProjection } = useCashFlowTransactions({
     startDate: projectionStartDate,
     endDate: projectionEndDate,
+    source: 'nescon',
   });
 
-  const { data: allTransactions, isLoading: loadingAll } = useCashFlowTransactions({});
+  const { data: allTransactions, isLoading: loadingAll } = useCashFlowTransactions({ source: 'nescon' });
 
   const { data: dashboardTransactions, isLoading: loadingDashboard } = useCashFlowTransactions({
     startDate: dashboardFilter.startDate,
     endDate: dashboardFilter.endDate,
+    source: 'nescon',
   });
 
-  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'nescon');
   const { data: clients } = useClients();
 
   // Local filters
@@ -139,7 +142,7 @@ export function FinancialNesconPage() {
   };
 
   // Mutations
-  const createTransaction = useCreateCashFlowTransaction();
+  const createTransaction = useCreateCashFlowTransaction('nescon');
   const updateTransaction = useUpdateCashFlowTransaction();
   const settleTransaction = useSettleTransaction();
   const deleteTransaction = useDeleteCashFlowTransaction();
