@@ -82,6 +82,8 @@ export function ClientsPage() {
     referral: 'Indicação',
     direct_prospecting: 'Prospecção Direta',
     google_ads: 'Google Ads',
+    google_my_business: 'Google Meu Negócio',
+    site: 'Site',
     events: 'Eventos',
     other: 'Outro',
   };

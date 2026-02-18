@@ -7,7 +7,7 @@
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type PriorityLevel = 'low' | 'medium' | 'high' | 'urgent';
 export type LeadStatus = 'prospecting' | 'contact' | 'proposal' | 'negotiation' | 'won' | 'lost';
-export type AcquisitionChannel = 'whatsapp' | 'social_media' | 'website_form' | 'referral' | 'direct_prospecting' | 'google_ads' | 'events' | 'other';
+export type AcquisitionChannel = 'whatsapp' | 'social_media' | 'website_form' | 'referral' | 'direct_prospecting' | 'google_ads' | 'google_my_business' | 'site' | 'events' | 'other';
 export type ProcessStatus = 'pending' | 'in_progress' | 'awaiting_docs' | 'awaiting_client' | 'completed' | 'cancelled';
 export type ContractStatus = 'draft' | 'active' | 'suspended' | 'cancelled' | 'expired';
 export type OnboardingStatus = 'pending' | 'in_progress' | 'completed';
