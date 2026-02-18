@@ -24,6 +24,7 @@ import { FinancialDashboardView } from '@/components/financial/FinancialDashboar
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
+import { NesconCashFlowView } from '@/components/financial/NesconCashFlowView';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -275,6 +276,10 @@ export function FinancialPage() {
             <Landmark className="h-4 w-4" />
             Contas
           </TabsTrigger>
+          <TabsTrigger value="nescon" className="gap-2">
+            <Wallet className="h-4 w-4" />
+            Caixa Nescon
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 mt-4">
@@ -404,6 +409,10 @@ export function FinancialPage() {
 
         <TabsContent value="financial-accounts" className="space-y-6 mt-4">
           <FinancialAccountsManager />
+        </TabsContent>
+
+        <TabsContent value="nescon" className="space-y-6 mt-4">
+          <NesconCashFlowView />
         </TabsContent>
 
       {/* Dialog de novo/editar lançamento */}
