@@ -309,24 +309,37 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
           }),
         });
 
-        const sendResult = await response.json().catch(() => ({ success: false, error: 'Resposta inválida do servidor' }));
-
-        if (response.ok && sendResult.success) {
-          sucessos++;
-          resultados.push({
-            success: true,
-            empresaId,
-            empresa: empresa.client_name || empresa.cnpj,
-            status: empresa.boletoStatus,
-            mensagemEnviada: true,
-            pdfEnviado: true,
-            diasAtraso: getDiasAtraso(empresa) ?? undefined,
-            valor: empresa.valor_mensal,
-          });
-          await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP', true, 'Boleto enviado com sucesso');
-        } else {
-          throw new Error(sendResult.error || sendResult.details || `Erro HTTP ${response.status}`);
+        const responseText = await response.text();
+        let sendResult: any;
+        try {
+          sendResult = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          console.error(`[Cora] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 300));
+          throw new Error(`Resposta inválida do backend (status ${response.status}). O corpo não é JSON. Verifique se a URL do backend está correta e a rota /api/notifications/whatsapp-optimized/process-boleto-complete existe.`);
         }
+
+        if (!response.ok) {
+          const msg = sendResult?.error || sendResult?.message || sendResult?.details || `Erro HTTP ${response.status}`;
+          console.error(`[Cora] Erro ${response.status}:`, sendResult);
+          throw new Error(msg);
+        }
+
+        if (sendResult && typeof sendResult.success === 'boolean' && !sendResult.success) {
+          throw new Error(sendResult.error || sendResult.message || 'Erro no processamento do boleto');
+        }
+
+        sucessos++;
+        resultados.push({
+          success: true,
+          empresaId,
+          empresa: empresa.client_name || empresa.cnpj,
+          status: empresa.boletoStatus,
+          mensagemEnviada: true,
+          pdfEnviado: true,
+          diasAtraso: getDiasAtraso(empresa) ?? undefined,
+          valor: empresa.valor_mensal,
+        });
+        await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP', true, 'Boleto enviado com sucesso');
       } catch (err: any) {
         erros++;
         resultados.push({
