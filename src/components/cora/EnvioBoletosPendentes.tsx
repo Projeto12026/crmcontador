@@ -124,8 +124,21 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
     } catch { /* ignore */ }
   }, []);
 
-  // Backend URL is now automatic via nginx reverse proxy (relative URLs)
-  const backendUrl = '';
+  // Backend URL: use config backend_token_url base or fallback to relative (nginx proxy in Docker)
+  const backendUrl = useMemo(() => {
+    const apiCfg = configs?.find(c => c.chave === 'cora_api');
+    const tokenUrl = (apiCfg?.valor as any)?.backend_token_url || '';
+    if (tokenUrl) {
+      // Extract base URL from backend_token_url (e.g., https://crm.controledinheiro.com.br/api/cora/get-token -> https://crm.controledinheiro.com.br)
+      try {
+        const url = new URL(tokenUrl);
+        return url.origin;
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }, [configs]);
 
   const wascriptConfig = useMemo(() => {
     const wpp = configs?.find(c => c.chave === 'whatsapp');
