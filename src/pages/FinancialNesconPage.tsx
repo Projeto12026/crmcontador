@@ -279,7 +279,7 @@ export function FinancialNesconPage() {
             onReset={resetFilters}
           />
           {summary && (
-            <NesconSummaryCards summary={summary} isLoading={loadingSummary} />
+            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={rawSummary?.projectedExpense} />
           )}
           <TransactionsTable
             transactions={filteredTransactions}
