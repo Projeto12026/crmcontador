@@ -285,6 +285,9 @@ export type Database = {
       }
       clients: {
         Row: {
+          acquisition_source:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           address: string | null
           city: string | null
           created_at: string
@@ -303,6 +306,9 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
+          acquisition_source?:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           address?: string | null
           city?: string | null
           created_at?: string
@@ -321,6 +327,9 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
+          acquisition_source?:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           address?: string | null
           city?: string | null
           created_at?: string
@@ -829,6 +838,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          acquisition_channel:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           company_name: string
           contact_name: string | null
           converted_client_id: string | null
@@ -844,6 +856,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          acquisition_channel?:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           company_name: string
           contact_name?: string | null
           converted_client_id?: string | null
@@ -859,6 +874,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          acquisition_channel?:
+            | Database["public"]["Enums"]["acquisition_channel"]
+            | null
           company_name?: string
           contact_name?: string | null
           converted_client_id?: string | null
@@ -882,6 +900,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      marketing_investments: {
+        Row: {
+          created_at: string
+          id: string
+          month: string
+          notes: string | null
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          month: string
+          notes?: string | null
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          month?: string
+          notes?: string | null
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       onboarding_template_items: {
         Row: {
@@ -1494,6 +1539,15 @@ export type Database = {
       }
     }
     Enums: {
+      acquisition_channel:
+        | "whatsapp"
+        | "social_media"
+        | "website_form"
+        | "referral"
+        | "direct_prospecting"
+        | "google_ads"
+        | "events"
+        | "other"
       app_role: "admin" | "finance" | "user"
       client_status: "active" | "inactive" | "blocked"
       contract_status:
@@ -1650,6 +1704,16 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      acquisition_channel: [
+        "whatsapp",
+        "social_media",
+        "website_form",
+        "referral",
+        "direct_prospecting",
+        "google_ads",
+        "events",
+        "other",
+      ],
       app_role: ["admin", "finance", "user"],
       client_status: ["active", "inactive", "blocked"],
       contract_status: ["draft", "active", "suspended", "cancelled", "expired"],
