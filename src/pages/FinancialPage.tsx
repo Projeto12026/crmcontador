@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths, parseISO, isSameMonth } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, FileDown } from 'lucide-react';
+import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportInstallmentsPdf, exportAccountsPdf } from '@/lib/pdf-export';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
@@ -232,6 +234,106 @@ export function FinancialPage() {
     }
   };
 
+  // PDF Export handlers
+  const handleExportDashboardPdf = () => {
+    if (!dashboardTransactions) return;
+    const fmtC = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const groupMap: Record<string, { name: string; projected: number; executed: number; total: number }> = {};
+    dashboardTransactions.forEach(tx => {
+      const name = tx.account?.name || tx.account_id;
+      if (!groupMap[name]) groupMap[name] = { name, projected: 0, executed: 0, total: 0 };
+      groupMap[name].projected += Number(tx.future_expense || 0) + Number(tx.future_income || 0);
+      groupMap[name].executed += Number(tx.expense || 0) + Number(tx.income || 0);
+      groupMap[name].total += Number(tx.value || 0);
+    });
+    exportDashboardPdf(
+      'Dashboard Financeiro',
+      [
+        { label: 'Receitas', value: fmtC(dashboardTransactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.value), 0)) },
+        { label: 'Despesas', value: fmtC(dashboardTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.value), 0)) },
+      ],
+      Object.values(groupMap).map(g => ({ ...g, projected: fmtC(g.projected), executed: fmtC(g.executed), total: fmtC(g.total) })),
+      `${dashboardFilter.startDate} a ${dashboardFilter.endDate}`,
+    );
+  };
+
+  const handleExportCashFlowPdf = () => {
+    exportTransactionsPdf(filteredTransactions, 'Fluxo de Caixa Financeiro', `${filters.startDate} a ${filters.endDate}`, summary);
+  };
+
+  const handleExportProjectionPdf = () => {
+    if (!projectionTransactions) return;
+    const fmtC = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+    const months: Date[] = [];
+    const [year, month] = projectionStartDate.split('-').map(Number);
+    const start = new Date(year, month - 1, 1);
+    for (let i = 0; i < projectionMonths; i++) months.push(addMonths(start, i));
+
+    const accountMap: Record<string, { name: string; groupNumber: number; months: Record<string, { projected: number; executed: number; total: number }> }> = {};
+    const monthTotals: Record<string, { projected: number; executed: number; total: number }> = {};
+    months.forEach(m => { monthTotals[format(m, 'yyyy-MM')] = { projected: 0, executed: 0, total: 0 }; });
+
+    projectionTransactions.forEach(tx => {
+      const txDate = parseISO(tx.date);
+      const monthKey = format(txDate, 'yyyy-MM');
+      if (!months.some(m => isSameMonth(m, txDate))) return;
+      const accountId = tx.account_id;
+      const accountName = tx.account?.name || accountId;
+      const groupNumber = tx.account?.group_number || 0;
+      if (!accountMap[accountId]) {
+        accountMap[accountId] = { name: accountName, groupNumber, months: {} };
+        months.forEach(m => { accountMap[accountId].months[format(m, 'yyyy-MM')] = { projected: 0, executed: 0, total: 0 }; });
+      }
+      const futureVal = tx.type === 'income' ? Number(tx.future_income || 0) : Number(tx.future_expense || 0);
+      const execVal = tx.type === 'income' ? Number(tx.income || 0) : Number(tx.expense || 0);
+      const sign = tx.type === 'income' ? 1 : -1;
+      const total = (futureVal + execVal) * sign;
+      if (accountMap[accountId].months[monthKey]) {
+        accountMap[accountId].months[monthKey].total += total;
+      }
+      if (monthTotals[monthKey]) monthTotals[monthKey].total += total;
+    });
+
+    const rows = Object.values(accountMap).sort((a, b) => a.groupNumber - b.groupNumber).map(a => ({
+      name: a.name, isGroup: false, months: a.months,
+    }));
+    exportProjectionPdf(rows, months, 'Projeção Financeiro', monthTotals);
+  };
+
+  const handleExportInstallmentsPdf = () => {
+    if (!allTransactions) return;
+    const installmentPattern = /^(.+?)\s*\((\d+)\/(\d+)\)$/;
+    const groups: Record<string, any> = {};
+    allTransactions.filter(tx => tx.type === 'expense').forEach(tx => {
+      const match = tx.description.match(installmentPattern);
+      if (!match) return;
+      const baseName = match[1].trim();
+      const total = parseInt(match[3]);
+      const key = `${baseName}__${total}`;
+      if (!groups[key]) groups[key] = { baseDescription: baseName, accountName: tx.account?.name || '', value: Number(tx.value), totalInstallments: total, paidInstallments: 0, remainingInstallments: 0, totalPaid: 0, totalRemaining: 0, lastDate: new Date(tx.date) };
+      const isPaid = Number(tx.expense || 0) > 0;
+      if (isPaid) { groups[key].paidInstallments++; groups[key].totalPaid += Number(tx.value); }
+      else { groups[key].remainingInstallments++; groups[key].totalRemaining += Number(tx.value); }
+      const txDate = new Date(tx.date);
+      if (txDate > groups[key].lastDate) groups[key].lastDate = txDate;
+    });
+    exportInstallmentsPdf('Parceladas Financeiro', Object.values(groups));
+  };
+
+  const handleExportAccountsPdf = () => {
+    if (!categories) return;
+    const flatList: { id: string; name: string; level: number }[] = [];
+    const roots = categories.filter(c => !c.parent_id).sort((a, b) => a.group_number - b.group_number);
+    const addChildren = (parentId: string, level: number) => {
+      categories.filter(c => c.parent_id === parentId).forEach(c => {
+        flatList.push({ id: c.id, name: c.name, level });
+        addChildren(c.id, level + 1);
+      });
+    };
+    roots.forEach(r => { flatList.push({ id: r.id, name: r.name, level: 0 }); addChildren(r.id, 1); });
+    exportAccountsPdf('Plano de Contas Financeiro', flatList);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -280,6 +382,11 @@ export function FinancialPage() {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleExportDashboardPdf}>
+              <FileDown className="mr-2 h-4 w-4" />PDF
+            </Button>
+          </div>
           <DashboardFilters onChange={setDashboardFilter} />
           <FinancialDashboardView
             transactions={dashboardTransactions || []}
@@ -288,13 +395,18 @@ export function FinancialPage() {
         </TabsContent>
 
         <TabsContent value="cash-flow" className="space-y-6 mt-4">
-          <CashFlowFilters
-            filters={filters}
-            onFiltersChange={setFilters}
-            accounts={categoriesFlat || []}
-            financialAccounts={financialAccounts || []}
-            onReset={resetFilters}
-          />
+          <div className="flex justify-between items-center">
+            <CashFlowFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              accounts={categoriesFlat || []}
+              financialAccounts={financialAccounts || []}
+              onReset={resetFilters}
+            />
+            <Button variant="outline" size="sm" onClick={handleExportCashFlowPdf}>
+              <FileDown className="mr-2 h-4 w-4" />PDF
+            </Button>
+          </div>
           {summary && (
             <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
           )}
@@ -312,10 +424,15 @@ export function FinancialPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Plano de Contas</CardTitle>
-              <Button onClick={() => handleAddCategory(undefined, 1)} size="sm">
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Conta
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleExportAccountsPdf}>
+                  <FileDown className="mr-2 h-4 w-4" />PDF
+                </Button>
+                <Button onClick={() => handleAddCategory(undefined, 1)} size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Conta
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loadingCategories ? (
@@ -380,6 +497,9 @@ export function FinancialPage() {
                 >
                   Redefinir
                 </Button>
+                <Button variant="outline" onClick={handleExportProjectionPdf}>
+                  <FileDown className="mr-2 h-4 w-4" />PDF
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -393,6 +513,11 @@ export function FinancialPage() {
         </TabsContent>
 
         <TabsContent value="installments" className="space-y-6 mt-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleExportInstallmentsPdf}>
+              <FileDown className="mr-2 h-4 w-4" />PDF
+            </Button>
+          </div>
           <InstallmentExpensesView
             transactions={allTransactions || []}
             isLoading={loadingAll}
