@@ -24,7 +24,6 @@ import { FinancialDashboardView } from '@/components/financial/FinancialDashboar
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
-import { NesconCashFlowView } from '@/components/financial/NesconCashFlowView';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -95,27 +94,15 @@ export function FinancialPage() {
     if (!transactions) return [];
     
     return transactions.filter(tx => {
-      // Filtro por grupo
-      if (filters.groupNumber && tx.account?.group_number !== filters.groupNumber) {
-        return false;
-      }
-      
-      // Filtro por conta financeira
-      if (filters.financialAccountId && tx.financial_account_id !== filters.financialAccountId) {
-        return false;
-      }
-      
-      // Filtro por status
+      if (filters.groupNumber && tx.account?.group_number !== filters.groupNumber) return false;
+      if (filters.financialAccountId && tx.financial_account_id !== filters.financialAccountId) return false;
       if (filters.status) {
         const hasFuture = (tx.type === 'income' ? tx.future_income : tx.future_expense) > 0;
         const hasExecuted = (tx.type === 'income' ? tx.income : tx.expense) > 0;
-        
         if (filters.status === 'projected' && (!hasFuture || hasExecuted)) return false;
         if (filters.status === 'executed' && (!hasExecuted || hasFuture)) return false;
         if (filters.status === 'mixed' && !(hasFuture && hasExecuted)) return false;
       }
-      
-      // Filtro por pesquisa (descrição ou valor)
       if (filters.searchTerm) {
         const term = filters.searchTerm.toLowerCase();
         const matchDescription = tx.description.toLowerCase().includes(term);
@@ -123,30 +110,26 @@ export function FinancialPage() {
         const matchOrigin = tx.origin_destination?.toLowerCase().includes(term);
         if (!matchDescription && !matchValue && !matchOrigin) return false;
       }
-      
       return true;
     });
   }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status, filters.searchTerm]);
 
-  // Recalcular summary a partir das transações filtradas quando há filtros locais ativos
+  // Recalcular summary quando há filtros locais
   const hasLocalFilters = filters.groupNumber || filters.status || filters.searchTerm;
   const summary = useMemo(() => {
     if (!hasLocalFilters) return rawSummary;
     if (!filteredTransactions.length) return rawSummary;
-
     const result = {
       totalIncome: 0, totalExpense: 0, balance: 0,
       projectedIncome: 0, projectedExpense: 0,
       executedIncome: 0, executedExpense: 0, executedBalance: 0,
       transactionCount: filteredTransactions.length,
     };
-
     filteredTransactions.forEach(tx => {
       const income = Number(tx.income || 0);
       const expense = Number(tx.expense || 0);
       const futureIncome = Number(tx.future_income || 0);
       const futureExpense = Number(tx.future_expense || 0);
-
       result.executedIncome += income;
       result.executedExpense += expense;
       result.projectedIncome += futureIncome;
@@ -154,7 +137,6 @@ export function FinancialPage() {
       result.totalIncome += income + futureIncome;
       result.totalExpense += expense + futureExpense;
     });
-
     result.balance = result.totalIncome - result.totalExpense;
     result.executedBalance = result.executedIncome - result.executedExpense;
     return result;
@@ -276,10 +258,6 @@ export function FinancialPage() {
             <Landmark className="h-4 w-4" />
             Contas
           </TabsTrigger>
-          <TabsTrigger value="nescon" className="gap-2">
-            <Wallet className="h-4 w-4" />
-            Caixa Nescon
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 mt-4">
@@ -291,7 +269,6 @@ export function FinancialPage() {
         </TabsContent>
 
         <TabsContent value="cash-flow" className="space-y-6 mt-4">
-          {/* Filtros */}
           <CashFlowFilters
             filters={filters}
             onFiltersChange={setFilters}
@@ -299,13 +276,9 @@ export function FinancialPage() {
             financialAccounts={financialAccounts || []}
             onReset={resetFilters}
           />
-          
-          {/* Resumo */}
           {summary && (
             <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} />
           )}
-          
-          {/* Tabela de lançamentos */}
           <TransactionsTable
             transactions={filteredTransactions}
             isLoading={loadingTransactions}
@@ -354,7 +327,6 @@ export function FinancialPage() {
         </TabsContent>
 
         <TabsContent value="projection" className="space-y-6 mt-4">
-          {/* Filtros de período da projeção */}
           <Card>
             <CardContent className="py-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
@@ -409,10 +381,6 @@ export function FinancialPage() {
 
         <TabsContent value="financial-accounts" className="space-y-6 mt-4">
           <FinancialAccountsManager />
-        </TabsContent>
-
-        <TabsContent value="nescon" className="space-y-6 mt-4">
-          <NesconCashFlowView />
         </TabsContent>
 
       {/* Dialog de novo/editar lançamento */}
