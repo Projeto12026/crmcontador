@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, TrendingUp, TrendingDown, Wallet, Clock, CheckCircle, BarChart3, CalendarRange, AlertTriangle, FileText, CircleDollarSign } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Wallet, Clock, CheckCircle, BarChart3, CalendarRange, FileText, CircleDollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CashFlowTransaction, CashFlowSummary } from '@/types/crm';
 import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
 import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
-import { AJUSTE_RECEITAS, aplicarAjusteReceita } from '@/lib/financial-constants';
+
 import { useCashFlowTransactions, useCashFlowSummary, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
 import { useAccountCategoriesFlat } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
@@ -36,22 +36,10 @@ const COLORS = [
 ];
 
 /**
- * Aplica o ajuste de R$ 2.800 ao summary do fluxo de caixa.
- * Subtrai o ajuste de todas as métricas que dependem de receitas (grupo 1).
+ * Returns summary as-is (no adjustments).
  */
 function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
-  return {
-    ...summary,
-    totalIncome: aplicarAjusteReceita(summary.totalIncome),
-    executedIncome: aplicarAjusteReceita(summary.executedIncome),
-    projectedIncome: Math.max(0, summary.projectedIncome - AJUSTE_RECEITAS + Math.min(AJUSTE_RECEITAS, summary.executedIncome)),
-    executedExpense: summary.executedExpense,
-    projectedExpense: summary.projectedExpense,
-    totalExpense: summary.totalExpense,
-    balance: aplicarAjusteReceita(summary.totalIncome) - summary.totalExpense,
-    executedBalance: aplicarAjusteReceita(summary.executedIncome) - summary.executedExpense,
-    transactionCount: summary.transactionCount,
-  };
+  return summary;
 }
 
 // ============================================================
@@ -75,10 +63,6 @@ function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { sum
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-        <AlertTriangle className="h-3 w-3" />
-        <span>Valores com ajuste de {formatCurrency(AJUSTE_RECEITAS)} nas receitas (Grupo 1)</span>
-      </div>
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
@@ -190,16 +174,9 @@ function NesconProjectionView({
       }
     });
 
-    // Apply AJUSTE_RECEITAS to group 1
-    if (groupTotals[1]) {
-      Object.keys(groupTotals[1]).forEach(monthKey => {
-        groupTotals[1][monthKey] = Math.max(0, groupTotals[1][monthKey] - AJUSTE_RECEITAS);
-      });
-    }
-
     // DRE structure per month
     const GROUP_NAMES: Record<number, string> = {
-      1: '1 - Receitas (ajustadas)',
+      1: '1 - Receitas',
       2: '2 - Despesas Marketing/Vendas',
       3: '3 - Despesas Operacionais',
       4: '4 - Folha de Pagamento',
@@ -268,10 +245,6 @@ function NesconProjectionView({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Projeção Caixa Nescon
-          <span className="text-xs font-normal text-amber-600 dark:text-amber-400 flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" />
-            Ajuste de {formatCurrency(AJUSTE_RECEITAS)}/mês nas receitas
-          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -382,8 +355,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
     return Math.max(1, differenceInMonths(e, s) + 1);
   }, [startDate, endDate]);
 
-  const adjustedMonthlyRevenue = aplicarAjusteReceita(contractRevenue.total);
-  const projectedRevenue = adjustedMonthlyRevenue * filterMonths;
+  const projectedRevenue = contractRevenue.total * filterMonths;
 
   // Query Cora boletos paid for these CNPJs within the period
   const { data: coraPaid } = useQuery({
@@ -455,15 +427,13 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
     let accumulated = 0;
     return sortedMonths.map(key => {
       const data = monthMap[key];
-      // Apply adjustment per month if group 1 revenue exists
-      const adjustedIncome = data.hasGroup1 ? Math.max(0, data.income - AJUSTE_RECEITAS) : data.income;
-      const net = adjustedIncome - data.expense;
+      const net = data.income - data.expense;
       accumulated += net;
       const [year, month] = key.split('-');
       const date = new Date(parseInt(year), parseInt(month) - 1);
       return {
         month: format(date, 'MMM/yy', { locale: ptBR }),
-        receitas: adjustedIncome,
+        receitas: data.income,
         despesas: data.expense,
         liquido: net,
         acumulado: accumulated,
@@ -487,7 +457,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{formatCurrency(projectedRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {formatCurrency(adjustedMonthlyRevenue)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'} (ajuste de {formatCurrency(AJUSTE_RECEITAS)})
+              {formatCurrency(contractRevenue.total)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'}
             </p>
             <p className="text-xs text-muted-foreground">
               {nesconContracts?.length || 0} contratos ativos
@@ -742,13 +712,6 @@ export function NesconCashFlowView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          <strong>Caixa Nescon:</strong> Todos os valores de receitas (Grupo 1) são exibidos com ajuste de <strong>{formatCurrency(AJUSTE_RECEITAS)}</strong>. 
-          Os indicadores derivados (margem, lucro, saldo) são calculados a partir das receitas ajustadas.
-        </p>
-      </div>
 
       <Tabs value={subTab} onValueChange={setSubTab}>
         <TabsList>

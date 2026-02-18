@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, AlertTriangle } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark } from 'lucide-react';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
@@ -22,7 +22,7 @@ import { DashboardFilters, DashboardFilterValues } from '@/components/financial/
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary } from '@/types/crm';
-import { AJUSTE_RECEITAS, aplicarAjusteReceita } from '@/lib/financial-constants';
+
 import { NesconSummaryCards, NesconDashboardView, NesconProjectionView } from '@/components/financial/NesconCashFlowView';
 
 export function FinancialNesconPage() {
@@ -242,12 +242,6 @@ export function FinancialNesconPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          <strong>Caixa Nescon:</strong> Receitas (Grupo 1) exibidas com ajuste de <strong>{formatCurrency(AJUSTE_RECEITAS)}</strong>. Indicadores derivados usam receitas ajustadas.
-        </p>
-      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
