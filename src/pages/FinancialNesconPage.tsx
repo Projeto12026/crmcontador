@@ -228,7 +228,7 @@ export function FinancialNesconPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">Financeiro Nescon</h1>
-          <p className="text-sm text-muted-foreground">Fluxo de Caixa Empresarial com ajuste de receitas</p>
+          <p className="text-sm text-muted-foreground">Fluxo de Caixa Empresarial</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => openNewTransaction('expense')}>
