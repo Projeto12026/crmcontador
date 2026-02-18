@@ -141,7 +141,7 @@ serve(async (req) => {
     const accessToken = await getAccessToken(GCLICK_APP_KEY, GCLICK_APP_SECRET);
 
     const params: Record<string, string> = { categoria: 'Obrigacao' };
-    if (type === 'folha_pagamento') params.nome = 'Folha de pagamento';
+    if (type === 'folha_pagamento') params.departamento = 'Departamento Pessoal';
 
     const tasks = await fetchTasks(accessToken, params);
     console.log(`Fetched ${tasks.length} tasks`);
