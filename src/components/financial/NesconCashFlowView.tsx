@@ -56,8 +56,15 @@ function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
 // ============================================================
 // SUB-COMPONENT: NesconSummaryCards (with adjustment)
 // ============================================================
-function NesconSummaryCards({ summary, isLoading, totalProjectedExpense }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number }) {
-  const adjusted = adjustSummary(summary);
+function NesconSummaryCards({ summary, isLoading, totalProjectedExpense, contractRevenuePerMonth = 0, filterMonths = 1 }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number; contractRevenuePerMonth?: number; filterMonths?: number }) {
+  const contractProjected = (contractRevenuePerMonth - AJUSTE_RECEITAS) * filterMonths;
+  const adjustedSummary: CashFlowSummary = {
+    ...summary,
+    projectedIncome: summary.projectedIncome + contractProjected,
+    totalIncome: summary.totalIncome + contractProjected,
+    balance: summary.balance + contractProjected,
+  };
+  const adjusted = adjustSummary(adjustedSummary);
   const projectedBalance = adjusted.projectedIncome - adjusted.projectedExpense;
 
   if (isLoading) {
@@ -815,7 +822,17 @@ export function NesconCashFlowView() {
             onReset={resetFilters}
           />
           {summary && (
-            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
+            <NesconSummaryCards 
+              summary={summary} 
+              isLoading={loadingSummary} 
+              totalProjectedExpense={grandTotalProjectedExpense}
+              contractRevenuePerMonth={contractRevenuePerMonth}
+              filterMonths={(() => {
+                const s = parseISO(filters.startDate);
+                const e = parseISO(filters.endDate);
+                return Math.max(1, differenceInMonths(e, s) + 1);
+              })()}
+            />
           )}
           <TransactionsTable
             transactions={filteredTransactions}

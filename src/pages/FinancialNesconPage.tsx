@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths, parseISO, differenceInMonths } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -299,7 +299,17 @@ export function FinancialNesconPage() {
             onReset={resetFilters}
           />
           {summary && (
-            <NesconSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
+            <NesconSummaryCards 
+              summary={summary} 
+              isLoading={loadingSummary} 
+              totalProjectedExpense={grandTotalProjectedExpense}
+              contractRevenuePerMonth={nesconContractRevenuePerMonth}
+              filterMonths={(() => {
+                const s = parseISO(filters.startDate);
+                const e = parseISO(filters.endDate);
+                return Math.max(1, differenceInMonths(e, s) + 1);
+              })()}
+            />
           )}
           <TransactionsTable
             transactions={filteredTransactions}
