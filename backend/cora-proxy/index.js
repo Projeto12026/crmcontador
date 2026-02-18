@@ -162,7 +162,7 @@ app.post('/api/cora/search-invoices', async (req, res) => {
       return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
     }
 
-    const url = `https://api.cora.com.br/v2/invoices/?start=${start}&end=${end}`;
+    const url = `https://matls-clients.api.cora.com.br/v2/invoices/?start=${start}&end=${end}`;
     console.log('Fetching invoices URL:', url);
 
     const response = await mtlsGet(url, token, certs);
@@ -197,7 +197,7 @@ app.post('/api/cora/download-pdf', async (req, res) => {
       return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
     }
 
-    const url = `https://api.cora.com.br/v2/invoices/${invoiceId}/document`;
+    const url = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}/document`;
 
     const buffer = await new Promise((resolve, reject) => {
       const urlObj = new URL(url);
@@ -372,17 +372,27 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
           const tokenParsed = JSON.parse(tokenResponse.body);
           if (tokenResponse.status === 200 && tokenParsed.access_token) {
-            const pdfUrl = `https://api.cora.com.br/v2/invoices/${invoiceId}/document`;
-            const pdfResponse = await fetch(pdfUrl, {
-              headers: { Authorization: `Bearer ${tokenParsed.access_token}` },
+            const pdfUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}/document`;
+            const pdfBuffer = await new Promise((resolve, reject) => {
+              const u = new URL(pdfUrl);
+              const opts = {
+                hostname: u.hostname, path: u.pathname, method: 'GET',
+                cert: certs.cert, key: certs.key,
+                headers: { 'Authorization': `Bearer ${tokenParsed.access_token}` },
+              };
+              const r = https.request(opts, (resp) => {
+                const chunks = [];
+                resp.on('data', (c) => chunks.push(c));
+                resp.on('end', () => resp.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
+              });
+              r.on('error', () => resolve(null));
+              r.end();
             });
-            if (pdfResponse.ok) {
-              const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            if (pdfBuffer) {
               const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
               const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
               await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
               pdfSent = true;
-              // Small delay between PDF and message
               await new Promise(r => setTimeout(r, 1500));
             }
           }
