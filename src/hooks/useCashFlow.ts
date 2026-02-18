@@ -11,6 +11,7 @@ export function useCashFlowTransactions(filters?: {
   accountId?: string;
   type?: TransactionType;
   financialAccountId?: string;
+  source?: string;
 }) {
   return useQuery({
     queryKey: ['cash_flow_transactions', filters],
@@ -25,6 +26,9 @@ export function useCashFlowTransactions(filters?: {
         `)
         .order('date', { ascending: false });
 
+      if (filters?.source) {
+        query = query.eq('source', filters.source);
+      }
       if (filters?.startDate) {
         query = query.gte('date', filters.startDate);
       }
@@ -55,11 +59,10 @@ export function useCashFlowTransactions(filters?: {
 }
 
 // Resumo do fluxo de caixa por período
-export function useCashFlowSummary(startDate: string, endDate: string, financialAccountId?: string) {
+export function useCashFlowSummary(startDate: string, endDate: string, financialAccountId?: string, source?: string) {
   return useQuery({
-    queryKey: ['cash_flow_summary', startDate, endDate, financialAccountId],
+    queryKey: ['cash_flow_summary', startDate, endDate, financialAccountId, source],
     queryFn: async () => {
-      // Buscar transações do período, excluindo grupos 7 e 8
       let query = supabase
         .from('cash_flow_transactions')
         .select(`
@@ -69,6 +72,9 @@ export function useCashFlowSummary(startDate: string, endDate: string, financial
         .gte('date', startDate)
         .lte('date', endDate);
 
+      if (source) {
+        query = query.eq('source', source);
+      }
       if (financialAccountId) {
         query = query.eq('financial_account_id', financialAccountId);
       }
@@ -154,14 +160,14 @@ export function useCashFlowByGroup() {
 }
 
 // Criar lançamento (com suporte a parcelamento)
-export function useCreateCashFlowTransaction() {
+export function useCreateCashFlowTransaction(source: string = 'financeiro') {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: CashFlowTransactionFormData) => {
       const installmentCount = data.is_installment ? (data.installment_count || 2) : 1;
-      const valuePerInstallment = data.value; // valor já é por parcela
+      const valuePerInstallment = data.value;
       const baseDate = parseISO(data.date);
       
       const transactionsToInsert = [];
@@ -184,11 +190,10 @@ export function useCreateCashFlowTransaction() {
           contract_id: data.contract_id || null,
           notes: data.notes || null,
           paid_by_company: data.paid_by_company || false,
+          source,
         };
 
-        // Definir valores futuros ou realizados
         if (data.is_future || i > 0) {
-          // Primeira parcela pode ser realizada, demais são sempre projetadas
           if (data.type === 'income') {
             insertData.future_income = valuePerInstallment;
             insertData.future_expense = 0;
@@ -230,6 +235,7 @@ export function useCreateCashFlowTransaction() {
           expense: insertData.expense as number,
           future_income: insertData.future_income as number,
           future_expense: insertData.future_expense as number,
+          source: insertData.source as string,
         });
       }
 
@@ -357,7 +363,6 @@ export function useUpdateCashFlowTransaction() {
         notes: data.notes || null,
       };
 
-      // Definir valores futuros ou realizados
       if (data.is_future) {
         if (data.type === 'income') {
           updateData.future_income = data.value;

@@ -567,13 +567,15 @@ export function NesconCashFlowView() {
     accountId: filters.accountId,
     type: filters.type,
     financialAccountId: filters.financialAccountId,
+    source: 'nescon',
   });
-  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId);
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'nescon');
 
   // Data for dashboard tab
   const { data: dashboardTransactions, isLoading: loadingDashboard } = useCashFlowTransactions({
     startDate: dashboardFilter.startDate,
     endDate: dashboardFilter.endDate,
+    source: 'nescon',
   });
 
   // Data for projection tab
@@ -581,6 +583,7 @@ export function NesconCashFlowView() {
   const { data: projectionTransactions, isLoading: loadingProjection } = useCashFlowTransactions({
     startDate: projectionStartDate,
     endDate: projectionEndDate,
+    source: 'nescon',
   });
 
   // Local filters on transactions
