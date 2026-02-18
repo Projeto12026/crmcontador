@@ -480,7 +480,7 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">{formatCurrency(projectedRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {formatCurrency(contractRevenue.total)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'}
+              {formatCurrency(contractRevenue.total - AJUSTE_RECEITAS)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'}
             </p>
             <p className="text-xs text-muted-foreground">
               {nesconContracts?.length || 0} contratos ativos
