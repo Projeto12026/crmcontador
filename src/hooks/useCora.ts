@@ -296,12 +296,11 @@ export function useSyncBoletos() {
       const end = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-${lastDay}`;
 
       const allInvoices: any[] = [];
-      let page = 0;
-      const perPage = 20; // Cora API returns max 20 per page
+      let page = 1;
+      const perPage = 200; // Cora API accepts up to 200
       let totalItems = Infinity;
 
       while (allInvoices.length < totalItems) {
-        const offset = page * perPage;
         const invoicesRes = await fetch(`/api/cora/search-invoices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -315,7 +314,6 @@ export function useSyncBoletos() {
         const items = invoicesData.items || invoicesData.invoices || [];
         if (!Array.isArray(items)) throw new Error('Resposta inválida da API Cora');
 
-        // Capture totalItems from first response
         if (invoicesData.totalItems != null) {
           totalItems = invoicesData.totalItems;
         }
@@ -323,9 +321,7 @@ export function useSyncBoletos() {
         allInvoices.push(...items);
         console.log(`[Cora Sync] Page ${page}: ${items.length} items (total so far: ${allInvoices.length}/${totalItems})`);
 
-        // Stop if no more items returned (safety)
         if (items.length === 0) break;
-
         page++;
       }
 

@@ -153,7 +153,7 @@ function mtlsGet(url, token, certs) {
 // ── Search Invoices ──────────────────────────────────
 app.post('/api/cora/search-invoices', async (req, res) => {
   try {
-    const { token, start, end, page = 0, perPage = 100 } = req.body;
+    const { token, start, end, page = 1, perPage = 200 } = req.body;
 
     if (!token) return res.status(400).json({ error: 'Token obrigatório' });
 
@@ -162,8 +162,8 @@ app.post('/api/cora/search-invoices', async (req, res) => {
       return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
     }
 
-    const offset = page * perPage;
-    const url = `https://matls-clients.api.cora.com.br/v2/invoices/?start=${start}&end=${end}&offset=${offset}&limit=${perPage}`;
+    // Cora API uses page (1-based) and perPage params
+    const url = `https://matls-clients.api.cora.com.br/v2/invoices/?start=${start}&end=${end}&page=${page}&perPage=${perPage}`;
     console.log('Fetching invoices URL:', url);
 
     const response = await mtlsGet(url, token, certs);
