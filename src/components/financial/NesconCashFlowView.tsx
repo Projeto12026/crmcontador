@@ -137,12 +137,14 @@ function NesconProjectionView({
   transactions, 
   isLoading, 
   startDate, 
-  monthsToShow = 6 
+  monthsToShow = 6,
+  contractRevenuePerMonth = 0
 }: { 
   transactions: CashFlowTransaction[]; 
   isLoading?: boolean; 
   startDate: string; 
   monthsToShow?: number; 
+  contractRevenuePerMonth?: number;
 }) {
   const months = useMemo(() => {
     const result: Date[] = [];
@@ -185,6 +187,19 @@ function NesconProjectionView({
       }
     });
 
+    // Ensure Group 1 has the contract revenue as base for each month
+    const adjustedContractRevenue = contractRevenuePerMonth - AJUSTE_RECEITAS;
+    if (contractRevenuePerMonth > 0) {
+      if (!groupTotals[1]) {
+        groupTotals[1] = {};
+        months.forEach(m => { groupTotals[1][format(m, 'yyyy-MM')] = 0; });
+      }
+      months.forEach(m => {
+        const key = format(m, 'yyyy-MM');
+        // Add contract revenue base to whatever transactions exist
+        groupTotals[1][key] = (groupTotals[1][key] || 0) + adjustedContractRevenue;
+      });
+    }
     // DRE structure per month
     const GROUP_NAMES: Record<number, string> = {
       1: '1 - Receitas',
@@ -203,14 +218,14 @@ function NesconProjectionView({
     // Build DRE rows
     type DreRow = { label: string; type: 'group' | 'subtotal' | 'total'; groupNum?: number; getValue: (key: string) => number };
     const dre: DreRow[] = [
-      { label: GROUP_NAMES[1], type: 'group', groupNum: 1, getValue: (k) => (groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS },
+      { label: GROUP_NAMES[1], type: 'group', groupNum: 1, getValue: (k) => groupTotals[1]?.[k] || 0 },
       { label: GROUP_NAMES[2], type: 'group', groupNum: 2, getValue: (k) => groupTotals[2]?.[k] || 0 },
-      { label: '= Receita Líquida', type: 'subtotal', getValue: (k) => ((groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS) - (groupTotals[2]?.[k] || 0) },
+      { label: '= Receita Líquida', type: 'subtotal', getValue: (k) => (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0) },
       { label: GROUP_NAMES[3], type: 'group', groupNum: 3, getValue: (k) => groupTotals[3]?.[k] || 0 },
       { label: GROUP_NAMES[4], type: 'group', groupNum: 4, getValue: (k) => groupTotals[4]?.[k] || 0 },
       { label: GROUP_NAMES[5], type: 'group', groupNum: 5, getValue: (k) => groupTotals[5]?.[k] || 0 },
       { label: '= Lucro Operacional', type: 'subtotal', getValue: (k) => {
-        const recLiq = ((groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS) - (groupTotals[2]?.[k] || 0);
+        const recLiq = (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0);
         return recLiq - (groupTotals[3]?.[k] || 0) - (groupTotals[4]?.[k] || 0) - (groupTotals[5]?.[k] || 0);
       }},
       { label: GROUP_NAMES[6], type: 'group', groupNum: 6, getValue: (k) => groupTotals[6]?.[k] || 0 },
@@ -220,7 +235,7 @@ function NesconProjectionView({
       { label: GROUP_NAMES[10], type: 'group', groupNum: 10, getValue: (k) => groupTotals[10]?.[k] || 0 },
       { label: GROUP_NAMES[11], type: 'group', groupNum: 11, getValue: (k) => groupTotals[11]?.[k] || 0 },
       { label: '= Resultado Líquido', type: 'total', getValue: (k) => {
-        const receitas = (groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS;
+        const receitas = groupTotals[1]?.[k] || 0;
         let totalDesp = 0;
         for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[k] || 0);
         return receitas - totalDesp;
@@ -230,7 +245,7 @@ function NesconProjectionView({
     // Compute month totals (resultado liquido)
     months.forEach(m => {
       const key = format(m, 'yyyy-MM');
-      const receitas = (groupTotals[1]?.[key] || 0) - AJUSTE_RECEITAS;
+      const receitas = groupTotals[1]?.[key] || 0;
       let totalDesp = 0;
       for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[key] || 0);
       monthTotals[key] = receitas - totalDesp;
@@ -639,6 +654,25 @@ export function NesconCashFlowView() {
   const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
 
+  // Contracts for projection revenue
+  const { data: nesconContractsMain } = useQuery({
+    queryKey: ['nescon-contracts-main'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('monthly_value')
+        .eq('status', 'active')
+        .eq('manager', 'nescon');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const contractRevenuePerMonth = useMemo(() => {
+    if (!nesconContractsMain) return 0;
+    return nesconContractsMain.reduce((sum, c) => sum + (c.monthly_value || 0), 0);
+  }, [nesconContractsMain]);
+
   const categoriesFlat = useMemo(() => {
     if (!allCategoriesFlat) return allCategoriesFlat;
     return allCategoriesFlat.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
@@ -807,6 +841,7 @@ export function NesconCashFlowView() {
             isLoading={loadingProjection}
             startDate={projectionStartDate}
             monthsToShow={projectionMonths}
+            contractRevenuePerMonth={contractRevenuePerMonth}
           />
         </TabsContent>
       </Tabs>
