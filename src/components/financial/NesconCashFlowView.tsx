@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, TrendingUp, TrendingDown, Wallet, Clock, CheckCircle, BarChart3, CalendarRange, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { CashFlowTransaction, EXCLUDED_ACCOUNT_GROUPS, CashFlowSummary } from '@/types/crm';
+import { CashFlowTransaction, CashFlowSummary } from '@/types/crm';
 import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
 import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
@@ -172,7 +172,7 @@ function NesconProjectionView({
       if (!months.some(m => isSameMonth(m, txDate))) return;
       
       const group = tx.account?.group_number;
-      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
+      if (!group) return;
 
       const accountId = tx.account_id;
       const accountName = tx.account?.name || accountId;
@@ -384,7 +384,7 @@ function NesconDashboardView({ transactions, isLoading }: { transactions: CashFl
     transactions.forEach(tx => {
       if (tx.type !== 'expense') return;
       const group = tx.account?.group_number;
-      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
+      if (!group) return;
       const accountId = tx.account_id;
       const accountName = tx.account?.name || accountId;
       const value = Number(tx.expense || 0) + Number(tx.future_expense || 0);
@@ -398,7 +398,7 @@ function NesconDashboardView({ transactions, isLoading }: { transactions: CashFl
     const monthMap: Record<string, { income: number; expense: number; hasGroup1: boolean }> = {};
     transactions.forEach(tx => {
       const group = tx.account?.group_number;
-      if (!group || group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return;
+      if (!group) return;
       const monthKey = format(parseISO(tx.date), 'yyyy-MM');
       if (!monthMap[monthKey]) monthMap[monthKey] = { income: 0, expense: 0, hasGroup1: false };
       const incomeVal = Number(tx.income || 0) + Number(tx.future_income || 0);

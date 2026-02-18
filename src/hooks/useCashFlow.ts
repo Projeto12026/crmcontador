@@ -83,10 +83,11 @@ export function useCashFlowSummary(startDate: string, endDate: string, financial
 
       if (error) throw error;
 
-      // Filtrar grupos 7, 8 e grupos administrativos (100, 200)
+      // Nescon usa todos os seus grupos; Financeiro exclui grupos > 6 e administrativos (100, 200)
       const filtered = transactions?.filter(t => {
         const group = (t.account_categories as { group_number: number })?.group_number;
         if (!group) return false;
+        if (source === 'nescon') return true;
         if (group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return false;
         return true;
       }) || [];
