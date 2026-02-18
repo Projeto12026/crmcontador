@@ -158,14 +158,13 @@ function NesconProjectionView({
     return result;
   }, [startDate, monthsToShow]);
 
-  const { rows, groupTotals, monthTotals, hierarchical, finalBalance } = useMemo(() => {
-    const accountMap: Record<string, { id: string; name: string; groupNumber: number; months: Record<string, { projected: number; executed: number; total: number }> }> = {};
-    const groupTotals: Record<number, Record<string, { projected: number; executed: number; total: number }>> = {};
-    const monthTotals: Record<string, { projected: number; executed: number; total: number }> = {};
+  const { groupTotals, monthTotals, dre, finalBalance } = useMemo(() => {
+    const groupTotals: Record<number, Record<string, number>> = {};
+    const monthTotals: Record<string, number> = {};
 
     months.forEach(m => {
       const key = format(m, 'yyyy-MM');
-      monthTotals[key] = { projected: 0, executed: 0, total: 0 };
+      monthTotals[key] = 0;
     });
 
     transactions.forEach(tx => {
@@ -174,91 +173,89 @@ function NesconProjectionView({
       if (!months.some(m => isSameMonth(m, txDate))) return;
       
       const group = tx.account?.group_number;
-      if (!group) return;
-
-      const accountId = tx.account_id;
-      const accountName = tx.account?.name || accountId;
-
-      if (!accountMap[accountId]) {
-        accountMap[accountId] = { id: accountId, name: accountName, groupNumber: group, months: {} };
-        months.forEach(m => { accountMap[accountId].months[format(m, 'yyyy-MM')] = { projected: 0, executed: 0, total: 0 }; });
-      }
+      if (!group || group > 11) return;
 
       if (!groupTotals[group]) {
         groupTotals[group] = {};
-        months.forEach(m => { groupTotals[group][format(m, 'yyyy-MM')] = { projected: 0, executed: 0, total: 0 }; });
+        months.forEach(m => { groupTotals[group][format(m, 'yyyy-MM')] = 0; });
       }
 
       const futureValue = tx.type === 'income' ? (tx.future_income || 0) : (tx.future_expense || 0);
       const executedValue = tx.type === 'income' ? (tx.income || 0) : (tx.expense || 0);
-      const sign = tx.type === 'income' ? 1 : -1;
+      const total = futureValue + executedValue;
 
-      if (accountMap[accountId].months[monthKey]) {
-        accountMap[accountId].months[monthKey].projected += futureValue * sign;
-        accountMap[accountId].months[monthKey].executed += executedValue * sign;
-        accountMap[accountId].months[monthKey].total += (futureValue + executedValue) * sign;
-      }
-
-      if (groupTotals[group][monthKey]) {
-        groupTotals[group][monthKey].projected += futureValue * sign;
-        groupTotals[group][monthKey].executed += executedValue * sign;
-        groupTotals[group][monthKey].total += (futureValue + executedValue) * sign;
+      if (groupTotals[group][monthKey] !== undefined) {
+        groupTotals[group][monthKey] += total;
       }
     });
 
     // Apply AJUSTE_RECEITAS to group 1
     if (groupTotals[1]) {
       Object.keys(groupTotals[1]).forEach(monthKey => {
-        groupTotals[1][monthKey].projected = Math.max(0, groupTotals[1][monthKey].projected - AJUSTE_RECEITAS);
-        groupTotals[1][monthKey].executed = Math.max(0, groupTotals[1][monthKey].executed - AJUSTE_RECEITAS);
-        groupTotals[1][monthKey].total = Math.max(0, groupTotals[1][monthKey].total - AJUSTE_RECEITAS);
+        groupTotals[1][monthKey] = Math.max(0, groupTotals[1][monthKey] - AJUSTE_RECEITAS);
       });
     }
 
-    // Compute hierarchical results per month (with adjusted group 1)
-    const hierarchical: Record<string, { 
-      receitas: number; 
-      custos: number; 
-      margemContribuicao: number; 
-      despesas: number; 
-      lucroAntes: number; 
-      investimentos: number; 
-      reservas: number; 
-      lucroOperacional: number; 
-    }> = {};
+    // DRE structure per month
+    const GROUP_NAMES: Record<number, string> = {
+      1: '1 - Receitas (ajustadas)',
+      2: '2 - Despesas Marketing/Vendas',
+      3: '3 - Despesas Operacionais',
+      4: '4 - Folha de Pagamento',
+      5: '5 - Pró-labore Sócios',
+      6: '6 - Manutenções',
+      7: '7 - Imobilizado',
+      8: '8 - Despesas não Operacionais',
+      9: '9 - Materiais de Limpeza',
+      10: '10 - Taxas',
+      11: '11 - Despesas Financeiras',
+    };
 
+    // Build DRE rows
+    type DreRow = { label: string; type: 'group' | 'subtotal' | 'total'; groupNum?: number; getValue: (key: string) => number };
+    const dre: DreRow[] = [
+      { label: GROUP_NAMES[1], type: 'group', groupNum: 1, getValue: (k) => groupTotals[1]?.[k] || 0 },
+      { label: GROUP_NAMES[2], type: 'group', groupNum: 2, getValue: (k) => groupTotals[2]?.[k] || 0 },
+      { label: '= Receita Líquida', type: 'subtotal', getValue: (k) => (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0) },
+      { label: GROUP_NAMES[3], type: 'group', groupNum: 3, getValue: (k) => groupTotals[3]?.[k] || 0 },
+      { label: GROUP_NAMES[4], type: 'group', groupNum: 4, getValue: (k) => groupTotals[4]?.[k] || 0 },
+      { label: GROUP_NAMES[5], type: 'group', groupNum: 5, getValue: (k) => groupTotals[5]?.[k] || 0 },
+      { label: '= Lucro Operacional', type: 'subtotal', getValue: (k) => {
+        const recLiq = (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0);
+        return recLiq - (groupTotals[3]?.[k] || 0) - (groupTotals[4]?.[k] || 0) - (groupTotals[5]?.[k] || 0);
+      }},
+      { label: GROUP_NAMES[6], type: 'group', groupNum: 6, getValue: (k) => groupTotals[6]?.[k] || 0 },
+      { label: GROUP_NAMES[7], type: 'group', groupNum: 7, getValue: (k) => groupTotals[7]?.[k] || 0 },
+      { label: GROUP_NAMES[8], type: 'group', groupNum: 8, getValue: (k) => groupTotals[8]?.[k] || 0 },
+      { label: GROUP_NAMES[9], type: 'group', groupNum: 9, getValue: (k) => groupTotals[9]?.[k] || 0 },
+      { label: GROUP_NAMES[10], type: 'group', groupNum: 10, getValue: (k) => groupTotals[10]?.[k] || 0 },
+      { label: GROUP_NAMES[11], type: 'group', groupNum: 11, getValue: (k) => groupTotals[11]?.[k] || 0 },
+      { label: '= Resultado Líquido', type: 'total', getValue: (k) => {
+        const receitas = groupTotals[1]?.[k] || 0;
+        let totalDesp = 0;
+        for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[k] || 0);
+        return receitas - totalDesp;
+      }},
+    ];
+
+    // Compute month totals (resultado liquido)
     months.forEach(m => {
       const key = format(m, 'yyyy-MM');
-      const receitas = groupTotals[1]?.[key]?.total || 0; // Already adjusted
-      const custos = Math.abs(groupTotals[2]?.[key]?.total || 0);
-      const despesas = Math.abs(groupTotals[3]?.[key]?.total || 0);
-      const reservas = Math.abs(groupTotals[4]?.[key]?.total || 0);
-      const investimentos = Math.abs(groupTotals[5]?.[key]?.total || 0);
-      
-      const margemContribuicao = receitas - custos;
-      const lucroAntes = margemContribuicao - despesas;
-      const lucroOperacional = lucroAntes - investimentos - reservas;
-
-      hierarchical[key] = { receitas, custos, margemContribuicao, despesas, lucroAntes, investimentos, reservas, lucroOperacional };
-
-      // Month totals use adjusted values
-      monthTotals[key] = { 
-        projected: 0, executed: 0, 
-        total: lucroOperacional 
-      };
+      const receitas = groupTotals[1]?.[key] || 0;
+      let totalDesp = 0;
+      for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[key] || 0);
+      monthTotals[key] = receitas - totalDesp;
     });
-
-    const rows = Object.values(accountMap).sort((a, b) => a.id.localeCompare(b.id));
 
     let runningBalance = 0;
     const finalBalance: Record<string, number> = {};
     months.forEach(m => {
       const key = format(m, 'yyyy-MM');
-      runningBalance += monthTotals[key]?.total || 0;
+      runningBalance += monthTotals[key] || 0;
       finalBalance[key] = runningBalance;
     });
 
-    return { rows, groupTotals, monthTotals, hierarchical, finalBalance };
+    return { groupTotals, monthTotals, dre, finalBalance };
   }, [transactions, months]);
 
   if (isLoading) {
@@ -280,7 +277,7 @@ function NesconProjectionView({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b">
-              <th className="text-left py-2 px-3 font-medium sticky left-0 bg-background min-w-[220px]">Indicador</th>
+              <th className="text-left py-2 px-3 font-medium sticky left-0 bg-background min-w-[260px]">Indicador</th>
               {months.map(m => (
                 <th key={format(m, 'yyyy-MM')} className="text-right py-2 px-3 font-medium min-w-[120px]">
                   {format(m, 'MMM/yy', { locale: ptBR })}
@@ -289,78 +286,47 @@ function NesconProjectionView({
             </tr>
           </thead>
           <tbody>
-            {/* Receitas (ajustadas) */}
-            <tr className="border-b bg-green-50/50 dark:bg-green-950/20 font-medium">
-              <td className="py-2 px-3 sticky left-0 bg-green-50/50 dark:bg-green-950/20">1 - Receitas (ajustadas)</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.receitas || 0;
-                return <td key={key} className="text-right py-2 px-3 text-green-600">{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Custos Variáveis */}
-            <tr className="border-b">
-              <td className="py-2 px-3 sticky left-0 bg-background">2 - Dízimos</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.custos || 0;
-                return <td key={key} className="text-right py-2 px-3 text-red-600">{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Margem de Contribuição */}
-            <tr className="border-b bg-muted/30 font-medium">
-              <td className="py-2 px-3 sticky left-0 bg-muted/30">= Margem de Contribuição</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.margemContribuicao || 0;
-                return <td key={key} className={`text-right py-2 px-3 font-medium ${val >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Despesas Fixas */}
-            <tr className="border-b">
-              <td className="py-2 px-3 sticky left-0 bg-background">3 - Ofertas</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.despesas || 0;
-                return <td key={key} className="text-right py-2 px-3 text-red-600">{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Lucro antes invest */}
-            <tr className="border-b bg-muted/30 font-medium">
-              <td className="py-2 px-3 sticky left-0 bg-muted/30">= Lucro antes Invest.</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.lucroAntes || 0;
-                return <td key={key} className={`text-right py-2 px-3 font-medium ${val >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Sonhos */}
-            <tr className="border-b">
-              <td className="py-2 px-3 sticky left-0 bg-background">4 - Sonhos</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.reservas || 0;
-                return <td key={key} className="text-right py-2 px-3 text-red-600">{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Desp. Dedutíveis */}
-            <tr className="border-b">
-              <td className="py-2 px-3 sticky left-0 bg-background">5 - Despesas Dedutíveis</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.investimentos || 0;
-                return <td key={key} className="text-right py-2 px-3 text-red-600">{formatCurrency(val)}</td>;
-              })}
-            </tr>
-            {/* Lucro Operacional */}
-            <tr className="border-t-2 border-primary/20 bg-primary/10 font-bold">
-              <td className="py-2 px-3 sticky left-0 bg-primary/10">= Lucro Operacional</td>
-              {months.map(m => {
-                const key = format(m, 'yyyy-MM');
-                const val = hierarchical[key]?.lucroOperacional || 0;
-                return <td key={key} className={`text-right py-2 px-3 ${val >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(val)}</td>;
-              })}
-            </tr>
+            {dre.map((row, idx) => {
+              const isSubtotal = row.type === 'subtotal';
+              const isTotal = row.type === 'total';
+              const isRevenue = row.groupNum === 1;
+
+              const rowClass = isTotal
+                ? 'border-t-2 border-primary/20 bg-primary/10 font-bold'
+                : isSubtotal
+                ? 'border-b bg-muted/30 font-medium'
+                : isRevenue
+                ? 'border-b bg-green-50/50 dark:bg-green-950/20 font-medium'
+                : 'border-b';
+
+              const stickyBg = isTotal
+                ? 'bg-primary/10'
+                : isSubtotal
+                ? 'bg-muted/30'
+                : isRevenue
+                ? 'bg-green-50/50 dark:bg-green-950/20'
+                : 'bg-background';
+
+              return (
+                <tr key={idx} className={rowClass}>
+                  <td className={`py-2 px-3 sticky left-0 ${stickyBg}`}>{row.label}</td>
+                  {months.map(m => {
+                    const key = format(m, 'yyyy-MM');
+                    const val = row.getValue(key);
+                    const colorClass = isRevenue
+                      ? 'text-green-600'
+                      : (isSubtotal || isTotal)
+                      ? val >= 0 ? 'text-green-600' : 'text-red-600'
+                      : val > 0 ? 'text-red-600' : 'text-muted-foreground';
+                    return (
+                      <td key={key} className={`text-right py-2 px-3 ${colorClass}`}>
+                        {isRevenue ? formatCurrency(val) : (isSubtotal || isTotal) ? formatCurrency(val) : formatCurrency(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
             {/* Saldo Acumulado */}
             <tr className="bg-primary/5 font-bold">
               <td className="py-2 px-3 sticky left-0 bg-primary/5">Saldo Acumulado</td>
