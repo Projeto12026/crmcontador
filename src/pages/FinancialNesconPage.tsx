@@ -11,6 +11,7 @@ import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategor
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
+import { useContracts } from '@/hooks/useContracts';
 
 import { AccountCategoryTree } from '@/components/financial/AccountCategoryTree';
 import { AccountCategoryDialog } from '@/components/financial/AccountCategoryDialog';
@@ -59,6 +60,14 @@ export function FinancialNesconPage() {
   const { data: allCategories, isLoading: loadingCategories } = useAccountCategories();
   const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
+  const { data: allContracts } = useContracts();
+
+  const nesconContractRevenuePerMonth = useMemo(() => {
+    if (!allContracts) return 0;
+    return allContracts
+      .filter((c: any) => c.status === 'active' && c.manager === 'nescon')
+      .reduce((sum: number, c: any) => sum + (c.monthly_value || 0), 0);
+  }, [allContracts]);
 
   const categories = useMemo(() => {
     if (!allCategories) return allCategories;
@@ -372,6 +381,7 @@ export function FinancialNesconPage() {
             isLoading={loadingProjection}
             startDate={projectionStartDate}
             monthsToShow={projectionMonths}
+            contractRevenuePerMonth={nesconContractRevenuePerMonth}
           />
         </TabsContent>
 
