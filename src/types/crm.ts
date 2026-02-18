@@ -388,6 +388,7 @@ export interface ClientFormData {
   zip_code?: string;
   notes?: string;
   status?: ClientStatus;
+  acquisition_source?: AcquisitionChannel;
 }
 
 export interface TaskFormData {
