@@ -558,8 +558,13 @@ export function NesconCashFlowView() {
   const [projectionStartDate, setProjectionStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [projectionMonths, setProjectionMonths] = useState(6);
 
-  const { data: categoriesFlat } = useAccountCategoriesFlat();
+  const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
+
+  const categoriesFlat = useMemo(() => {
+    if (!allCategoriesFlat) return allCategoriesFlat;
+    return allCategoriesFlat.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
+  }, [allCategoriesFlat]);
   const settleTransaction = useSettleTransaction();
   const deleteTransaction = useDeleteCashFlowTransaction();
 
