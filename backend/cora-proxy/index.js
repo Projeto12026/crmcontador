@@ -121,6 +121,35 @@ app.post('/api/cora/get-token', async (req, res) => {
   }
 });
 
+// ── Helper: mTLS GET request ─────────────────────────
+function mtlsGet(url, token, certs) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const options = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      cert: certs.cert,
+      key: certs.key,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    };
+
+    const request = https.request(options, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => (data += chunk));
+      resp.on('end', () => {
+        resolve({ status: resp.statusCode, body: data });
+      });
+    });
+
+    request.on('error', (err) => reject(err));
+    request.end();
+  });
+}
+
 // ── Search Invoices ──────────────────────────────────
 app.post('/api/cora/search-invoices', async (req, res) => {
   try {
@@ -128,24 +157,25 @@ app.post('/api/cora/search-invoices', async (req, res) => {
 
     if (!token) return res.status(400).json({ error: 'Token obrigatório' });
 
+    const certs = loadCertificates();
+    if (!certs) {
+      return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
+    }
+
     const url = `https://api.cora.com.br/v2/invoices/?start=${start}&end=${end}`;
     console.log('Fetching invoices URL:', url);
 
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const rawBody = await response.text();
+    const response = await mtlsGet(url, token, certs);
     console.log('Invoices response status:', response.status);
-    console.log('Invoices response body:', rawBody.substring(0, 1000));
+    console.log('Invoices response body:', response.body.substring(0, 1000));
 
-    if (!response.ok) {
+    if (response.status !== 200) {
       let detail;
-      try { detail = JSON.parse(rawBody); } catch { detail = rawBody; }
+      try { detail = JSON.parse(response.body); } catch { detail = response.body; }
       return res.status(response.status).json({ error: 'Erro ao buscar invoices', detail });
     }
 
-    const data = JSON.parse(rawBody);
+    const data = JSON.parse(response.body);
     res.json(data);
   } catch (error) {
     console.error('Erro search-invoices:', error);
@@ -162,22 +192,47 @@ app.post('/api/cora/download-pdf', async (req, res) => {
       return res.status(400).json({ error: 'Token e invoiceId obrigatórios' });
     }
 
-    const url = `https://api.cora.com.br/v2/invoices/${invoiceId}/document`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      return res.status(response.status).json({ error: 'Erro ao baixar PDF', detail: data });
+    const certs = loadCertificates();
+    if (!certs) {
+      return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
     }
 
-    const buffer = await response.arrayBuffer();
+    const url = `https://api.cora.com.br/v2/invoices/${invoiceId}/document`;
+
+    const buffer = await new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const options = {
+        hostname: urlObj.hostname,
+        path: urlObj.pathname,
+        method: 'GET',
+        cert: certs.cert,
+        key: certs.key,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      };
+
+      const request = https.request(options, (resp) => {
+        const chunks = [];
+        resp.on('data', (chunk) => chunks.push(chunk));
+        resp.on('end', () => {
+          const body = Buffer.concat(chunks);
+          if (resp.statusCode !== 200) {
+            return reject(new Error(`Status ${resp.statusCode}: ${body.toString().substring(0, 500)}`));
+          }
+          resolve(body);
+        });
+      });
+
+      request.on('error', (err) => reject(err));
+      request.end();
+    });
+
     res.set('Content-Type', 'application/pdf');
-    res.send(Buffer.from(buffer));
+    res.send(buffer);
   } catch (error) {
     console.error('Erro download-pdf:', error);
-    res.status(500).json({ error: 'Erro interno', detail: error.message });
+    res.status(500).json({ error: 'Erro ao baixar PDF', detail: error.message });
   }
 });
 
