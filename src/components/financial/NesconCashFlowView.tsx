@@ -35,11 +35,21 @@ const COLORS = [
   '#8b5cf6',
 ];
 
+const AJUSTE_RECEITAS = 2800;
+const CORA_THRESHOLD = 14000;
+
 /**
- * Returns summary as-is (no adjustments).
+ * Applies the R$ 2,800 revenue adjustment to the summary.
  */
 function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
-  return summary;
+  return {
+    ...summary,
+    executedIncome: summary.executedIncome - AJUSTE_RECEITAS,
+    projectedIncome: summary.projectedIncome - AJUSTE_RECEITAS,
+    totalIncome: summary.totalIncome - AJUSTE_RECEITAS,
+    balance: summary.balance - AJUSTE_RECEITAS,
+    executedBalance: summary.executedBalance - AJUSTE_RECEITAS,
+  };
 }
 
 // ============================================================
@@ -192,14 +202,14 @@ function NesconProjectionView({
     // Build DRE rows
     type DreRow = { label: string; type: 'group' | 'subtotal' | 'total'; groupNum?: number; getValue: (key: string) => number };
     const dre: DreRow[] = [
-      { label: GROUP_NAMES[1], type: 'group', groupNum: 1, getValue: (k) => groupTotals[1]?.[k] || 0 },
+      { label: GROUP_NAMES[1], type: 'group', groupNum: 1, getValue: (k) => (groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS },
       { label: GROUP_NAMES[2], type: 'group', groupNum: 2, getValue: (k) => groupTotals[2]?.[k] || 0 },
-      { label: '= Receita Líquida', type: 'subtotal', getValue: (k) => (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0) },
+      { label: '= Receita Líquida', type: 'subtotal', getValue: (k) => ((groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS) - (groupTotals[2]?.[k] || 0) },
       { label: GROUP_NAMES[3], type: 'group', groupNum: 3, getValue: (k) => groupTotals[3]?.[k] || 0 },
       { label: GROUP_NAMES[4], type: 'group', groupNum: 4, getValue: (k) => groupTotals[4]?.[k] || 0 },
       { label: GROUP_NAMES[5], type: 'group', groupNum: 5, getValue: (k) => groupTotals[5]?.[k] || 0 },
       { label: '= Lucro Operacional', type: 'subtotal', getValue: (k) => {
-        const recLiq = (groupTotals[1]?.[k] || 0) - (groupTotals[2]?.[k] || 0);
+        const recLiq = ((groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS) - (groupTotals[2]?.[k] || 0);
         return recLiq - (groupTotals[3]?.[k] || 0) - (groupTotals[4]?.[k] || 0) - (groupTotals[5]?.[k] || 0);
       }},
       { label: GROUP_NAMES[6], type: 'group', groupNum: 6, getValue: (k) => groupTotals[6]?.[k] || 0 },
@@ -209,7 +219,7 @@ function NesconProjectionView({
       { label: GROUP_NAMES[10], type: 'group', groupNum: 10, getValue: (k) => groupTotals[10]?.[k] || 0 },
       { label: GROUP_NAMES[11], type: 'group', groupNum: 11, getValue: (k) => groupTotals[11]?.[k] || 0 },
       { label: '= Resultado Líquido', type: 'total', getValue: (k) => {
-        const receitas = groupTotals[1]?.[k] || 0;
+        const receitas = (groupTotals[1]?.[k] || 0) - AJUSTE_RECEITAS;
         let totalDesp = 0;
         for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[k] || 0);
         return receitas - totalDesp;
@@ -219,7 +229,7 @@ function NesconProjectionView({
     // Compute month totals (resultado liquido)
     months.forEach(m => {
       const key = format(m, 'yyyy-MM');
-      const receitas = groupTotals[1]?.[key] || 0;
+      const receitas = (groupTotals[1]?.[key] || 0) - AJUSTE_RECEITAS;
       let totalDesp = 0;
       for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[key] || 0);
       monthTotals[key] = receitas - totalDesp;
@@ -386,8 +396,13 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
 
   const executedRevenue = useMemo(() => {
     if (!coraPaid || coraPaid.length === 0) return 0;
-    return coraPaid.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
-  }, [coraPaid]);
+    const raw = coraPaid.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+    // Apply R$ 2,800 discount per month when Cora revenue exceeds threshold
+    if (raw > CORA_THRESHOLD) {
+      return raw - (AJUSTE_RECEITAS * filterMonths);
+    }
+    return raw;
+  }, [coraPaid, filterMonths]);
 
   const adimplencia = projectedRevenue > 0 ? (executedRevenue / projectedRevenue) * 100 : 0;
 
@@ -420,6 +435,13 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
         if (group === 1) monthMap[monthKey].hasGroup1 = true;
       } else {
         monthMap[monthKey].expense += expenseVal;
+      }
+    });
+
+    // Apply adjustment to months with Group 1 revenue
+    Object.keys(monthMap).forEach(key => {
+      if (monthMap[key].hasGroup1) {
+        monthMap[key].income -= AJUSTE_RECEITAS;
       }
     });
 
