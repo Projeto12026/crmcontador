@@ -378,6 +378,34 @@ export function useSyncBoletos() {
         }
       }
 
+      // 5. Auto-fix: ensure cnpj and total_amount_cents are populated from raw_json
+      // This catches cases where JavaScript field access might fail
+      // Use direct update as fallback to fix empty fields
+      // Use direct update as fallback
+      const { data: emptyBoletos } = await supabase
+        .from('cora_boletos')
+        .select('id, raw_json')
+        .or('cnpj.eq.,total_amount_cents.eq.0')
+        .eq('competencia_ano', competenciaAno)
+        .eq('competencia_mes', competenciaMes);
+
+      if (emptyBoletos && emptyBoletos.length > 0) {
+        console.log(`[Cora Sync] Fixing ${emptyBoletos.length} boletos with empty fields from raw_json`);
+        for (const b of emptyBoletos) {
+          const raw = b.raw_json as any;
+          if (!raw) continue;
+          const fixedCnpj = String(raw.customer_document || '').replace(/\D/g, '');
+          const fixedAmount = Number(raw.total_amount) || 0;
+          const fixedEmpresaId = cnpjMap.get(fixedCnpj) || null;
+          
+          await supabase.from('cora_boletos').update({
+            cnpj: fixedCnpj,
+            total_amount_cents: fixedAmount,
+            empresa_id: fixedEmpresaId,
+          }).eq('id', b.id);
+        }
+      }
+
       console.log(`[Cora Sync] Done: ${upserted} upserted, ${errors} errors out of ${allInvoices.length}`);
       return { fetched: allInvoices.length, upserted };
     },
