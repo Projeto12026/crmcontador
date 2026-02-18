@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, TrendingUp, TrendingDown, Wallet, Clock, CheckCircle, BarChart3, CalendarRange, AlertTriangle } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Wallet, Clock, CheckCircle, BarChart3, CalendarRange, AlertTriangle, FileText, CircleDollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CashFlowTransaction, CashFlowSummary } from '@/types/crm';
 import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/CashFlowFilters';
@@ -16,6 +16,8 @@ import { AJUSTE_RECEITAS, aplicarAjusteReceita } from '@/lib/financial-constants
 import { useCashFlowTransactions, useCashFlowSummary, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
 import { useAccountCategoriesFlat } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -378,7 +380,77 @@ function NesconProjectionView({
 // ============================================================
 // SUB-COMPONENT: NesconDashboardView (with adjustment)
 // ============================================================
-function NesconDashboardView({ transactions, isLoading }: { transactions: CashFlowTransaction[]; isLoading?: boolean }) {
+function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { transactions: CashFlowTransaction[]; isLoading?: boolean; startDate?: string; endDate?: string }) {
+  // ---- Contracts + Cora revenue triad ----
+  const { data: nesconContracts } = useQuery({
+    queryKey: ['nescon-contracts-revenue'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('monthly_value, client_id, clients(document)')
+        .eq('manager', 'nescon')
+        .eq('status', 'active');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const contractRevenue = useMemo(() => {
+    if (!nesconContracts) return { total: 0, cnpjs: [] as string[] };
+    let total = 0;
+    const cnpjs: string[] = [];
+    nesconContracts.forEach((c: any) => {
+      total += Number(c.monthly_value || 0);
+      const doc = c.clients?.document;
+      if (doc) cnpjs.push(doc.replace(/[^\d]/g, ''));
+    });
+    return { total, cnpjs };
+  }, [nesconContracts]);
+
+  // Derive period months from filter dates
+  const filterMonths = useMemo(() => {
+    if (!startDate || !endDate) return 1;
+    const s = parseISO(startDate);
+    const e = parseISO(endDate);
+    return Math.max(1, differenceInMonths(e, s) + 1);
+  }, [startDate, endDate]);
+
+  const projectedRevenue = contractRevenue.total * filterMonths;
+
+  // Query Cora boletos paid for these CNPJs within the period
+  const { data: coraPaid } = useQuery({
+    queryKey: ['nescon-cora-paid', contractRevenue.cnpjs, startDate, endDate],
+    queryFn: async () => {
+      if (contractRevenue.cnpjs.length === 0) return [];
+      // Normalize CNPJs for matching
+      const { data, error } = await supabase
+        .from('cora_boletos')
+        .select('cnpj, total_amount_cents, paid_at, competencia_mes, competencia_ano');
+      if (error) throw error;
+      // Filter in JS: PAID status + matching CNPJs + within date range
+      return (data || []).filter((b: any) => {
+        if (!b.paid_at) return false;
+        const bCnpj = (b.cnpj || '').replace(/[^\d]/g, '');
+        if (!contractRevenue.cnpjs.includes(bCnpj)) return false;
+        if (startDate && endDate && b.competencia_ano && b.competencia_mes) {
+          const bDate = new Date(b.competencia_ano, b.competencia_mes - 1);
+          const sDate = parseISO(startDate);
+          const eDate = parseISO(endDate);
+          return bDate >= startOfMonth(sDate) && bDate <= endOfMonth(eDate);
+        }
+        return true;
+      });
+    },
+    enabled: contractRevenue.cnpjs.length > 0,
+  });
+
+  const executedRevenue = useMemo(() => {
+    if (!coraPaid || coraPaid.length === 0) return 0;
+    return coraPaid.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+  }, [coraPaid]);
+
+  const adimplencia = projectedRevenue > 0 ? (executedRevenue / projectedRevenue) * 100 : 0;
+
   const topExpenses = useMemo(() => {
     const expenseMap: Record<string, { name: string; total: number; accountId: string }> = {};
     transactions.forEach(tx => {
@@ -437,6 +509,51 @@ function NesconDashboardView({ transactions, isLoading }: { transactions: CashFl
 
   return (
     <div className="space-y-6">
+      {/* Revenue Triad: Contracts vs Cora */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-blue-200 dark:border-blue-800">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium">Receita Contratual (Prevista)</CardTitle>
+            <FileText className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{formatCurrency(projectedRevenue)}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {formatCurrency(contractRevenue.total)}/mês × {filterMonths} {filterMonths === 1 ? 'mês' : 'meses'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {nesconContracts?.length || 0} contratos ativos
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-green-200 dark:border-green-800">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium">Receita Recebida (Cora)</CardTitle>
+            <CircleDollarSign className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(executedRevenue)}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {coraPaid?.length || 0} boletos pagos no período
+            </p>
+          </CardContent>
+        </Card>
+        <Card className={adimplencia >= 80 ? 'border-green-200 dark:border-green-800' : adimplencia >= 50 ? 'border-amber-200 dark:border-amber-800' : 'border-red-200 dark:border-red-800'}>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium">Adimplência</CardTitle>
+            <CheckCircle className={`h-4 w-4 ${adimplencia >= 80 ? 'text-green-500' : adimplencia >= 50 ? 'text-amber-500' : 'text-red-500'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${adimplencia >= 80 ? 'text-green-600' : adimplencia >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+              {adimplencia.toFixed(1)}%
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Diferença: {formatCurrency(projectedRevenue - executedRevenue)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

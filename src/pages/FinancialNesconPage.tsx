@@ -277,11 +277,13 @@ export function FinancialNesconPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard" className="space-y-6 mt-4">
+         <TabsContent value="dashboard" className="space-y-6 mt-4">
           <DashboardFilters onChange={setDashboardFilter} />
           <NesconDashboardView
             transactions={dashboardTransactions || []}
             isLoading={loadingDashboard}
+            startDate={dashboardFilter.startDate}
+            endDate={dashboardFilter.endDate}
           />
         </TabsContent>
 
