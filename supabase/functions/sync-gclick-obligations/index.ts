@@ -143,27 +143,35 @@ serve(async (req) => {
     const params: Record<string, string> = { categoria: 'Obrigacao' };
     if (type === 'folha_pagamento') params.departamento = 'Departamento Pessoal';
 
-    const tasks = await fetchTasks(accessToken, params);
-    console.log(`Fetched ${tasks.length} tasks`);
+    const allTasks = await fetchTasks(accessToken, params);
+    console.log(`Fetched ${allTasks.length} tasks from API`);
 
+    // Filter by department on our side since the API may not filter correctly
+    const tasks = type === 'folha_pagamento' 
+      ? allTasks.filter(t => (t.departamento?.nome || '').toLowerCase().includes('pessoal'))
+      : allTasks;
+    console.log(`After department filter: ${tasks.length} tasks`);
+
+    // Map all tasks to obligation data
+    const obligations = tasks.map(task => ({
+      gclick_id: task.id,
+      client_name: task.clienteApelido || 'Cliente',
+      client_cnpj: task.clienteInscricao || '',
+      client_status: 'Ativo',
+      department: task.departamento?.nome || 'Departamento Pessoal',
+      obligation_name: task.obrigacao?.nome || task.nome || 'Sem nome',
+      competence: formatCompetence(task.dataCompetencia || task.dataAcao),
+      due_date: task.dataMeta || task.dataVencimento || null,
+      status: mapStatus(task.status, task.dataMeta),
+      completed_at: task.dataConclusao,
+      updated_at: new Date().toISOString(),
+    }));
+
+    // Batch upsert in chunks of 200
     let syncedCount = 0;
-
-    for (const task of tasks) {
-      const obligationData = {
-        gclick_id: task.id,
-        client_name: task.clienteApelido || 'Cliente',
-        client_cnpj: task.clienteInscricao || '',
-        client_status: 'Ativo',
-        department: task.departamento?.nome || 'Departamento Pessoal',
-        obligation_name: task.nome || 'Folha de pagamento',
-        competence: formatCompetence(task.dataCompetencia || task.dataAcao),
-        due_date: task.dataMeta || task.dataVencimento || null,
-        status: mapStatus(task.status, task.dataMeta),
-        completed_at: task.dataConclusao,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Use REST API directly instead of SDK
+    const chunkSize = 200;
+    for (let i = 0; i < obligations.length; i += chunkSize) {
+      const chunk = obligations.slice(i, i + chunkSize);
       const upsertResponse = await fetch(`${supabaseUrl}/rest/v1/payroll_obligations?on_conflict=gclick_id`, {
         method: 'POST',
         headers: {
@@ -172,14 +180,14 @@ serve(async (req) => {
           'Content-Type': 'application/json',
           'Prefer': 'resolution=merge-duplicates',
         },
-        body: JSON.stringify(obligationData),
+        body: JSON.stringify(chunk),
       });
 
       if (upsertResponse.ok) {
-        syncedCount++;
+        syncedCount += chunk.length;
       } else {
         const errText = await upsertResponse.text();
-        console.error(`Upsert error for ${task.id}:`, errText);
+        console.error(`Batch upsert error (chunk ${i / chunkSize}):`, errText);
       }
     }
 
