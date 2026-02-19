@@ -56,13 +56,15 @@ function adjustSummary(summary: CashFlowSummary): CashFlowSummary {
 // ============================================================
 // SUB-COMPONENT: NesconSummaryCards (with adjustment)
 // ============================================================
-function NesconSummaryCards({ summary, isLoading, totalProjectedExpense, contractRevenuePerMonth = 0, filterMonths = 1 }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number; contractRevenuePerMonth?: number; filterMonths?: number }) {
+function NesconSummaryCards({ summary, isLoading, totalProjectedExpense, contractRevenuePerMonth = 0, filterMonths = 1, coraExecutedRevenue = 0 }: { summary: CashFlowSummary; isLoading?: boolean; totalProjectedExpense?: number; contractRevenuePerMonth?: number; filterMonths?: number; coraExecutedRevenue?: number }) {
   const contractProjected = (contractRevenuePerMonth - AJUSTE_RECEITAS) * filterMonths;
   const adjustedSummary: CashFlowSummary = {
     ...summary,
+    executedIncome: summary.executedIncome + coraExecutedRevenue,
+    executedBalance: summary.executedBalance + coraExecutedRevenue,
     projectedIncome: summary.projectedIncome + contractProjected,
-    totalIncome: summary.totalIncome + contractProjected,
-    balance: summary.balance + contractProjected,
+    totalIncome: summary.totalIncome + contractProjected + coraExecutedRevenue,
+    balance: summary.balance + contractProjected + coraExecutedRevenue,
   };
   const adjusted = adjustSummary(adjustedSummary);
   const projectedBalance = adjusted.projectedIncome - adjusted.projectedExpense;
@@ -692,6 +694,27 @@ export function NesconCashFlowView() {
     return nesconContractsMain.reduce((sum, c) => sum + (c.monthly_value || 0), 0);
   }, [nesconContractsMain]);
 
+  // Contracts with CNPJs for Cora matching (cash-flow tab)
+  const { data: nesconContractsWithCnpj } = useQuery({
+    queryKey: ['nescon-contracts-cnpj'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('monthly_value, client_id, clients(document)')
+        .eq('manager', 'nescon')
+        .eq('status', 'active');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const contractCnpjs = useMemo(() => {
+    if (!nesconContractsWithCnpj) return [];
+    return nesconContractsWithCnpj
+      .map((c: any) => c.clients?.document?.replace(/[^\d]/g, ''))
+      .filter(Boolean) as string[];
+  }, [nesconContractsWithCnpj]);
+
   const categoriesFlat = useMemo(() => {
     if (!allCategoriesFlat) return allCategoriesFlat;
     return allCategoriesFlat.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
@@ -709,6 +732,45 @@ export function NesconCashFlowView() {
     source: 'nescon',
   });
   const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'nescon');
+
+  // Cora boletos paid for cash-flow tab period
+  const { data: coraPaidCashFlow } = useQuery({
+    queryKey: ['nescon-cora-paid-cashflow', contractCnpjs, filters.startDate, filters.endDate],
+    queryFn: async () => {
+      if (contractCnpjs.length === 0) return [];
+      const { data, error } = await supabase
+        .from('cora_boletos')
+        .select('cnpj, total_amount_cents, paid_at, competencia_mes, competencia_ano');
+      if (error) throw error;
+      return (data || []).filter((b: any) => {
+        if (!b.paid_at) return false;
+        const bCnpj = (b.cnpj || '').replace(/[^\d]/g, '');
+        if (!contractCnpjs.includes(bCnpj)) return false;
+        if (filters.startDate && filters.endDate && b.competencia_ano && b.competencia_mes) {
+          const bDate = new Date(b.competencia_ano, b.competencia_mes - 1);
+          const sDate = parseISO(filters.startDate);
+          const eDate = parseISO(filters.endDate);
+          return bDate >= startOfMonth(sDate) && bDate <= endOfMonth(eDate);
+        }
+        return true;
+      });
+    },
+    enabled: contractCnpjs.length > 0,
+  });
+
+  const coraExecutedRevenue = useMemo(() => {
+    if (!coraPaidCashFlow || coraPaidCashFlow.length === 0) return 0;
+    const raw = coraPaidCashFlow.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+    if (raw > CORA_THRESHOLD) {
+      const months = (() => {
+        const s = parseISO(filters.startDate);
+        const e = parseISO(filters.endDate);
+        return Math.max(1, differenceInMonths(e, s) + 1);
+      })();
+      return raw - (AJUSTE_RECEITAS * months);
+    }
+    return raw;
+  }, [coraPaidCashFlow, filters.startDate, filters.endDate]);
 
   // Data for dashboard tab
   const { data: dashboardTransactions, isLoading: loadingDashboard } = useCashFlowTransactions({
@@ -810,6 +872,8 @@ export function NesconCashFlowView() {
           <NesconDashboardView
             transactions={dashboardTransactions || []}
             isLoading={loadingDashboard}
+            startDate={dashboardFilter.startDate}
+            endDate={dashboardFilter.endDate}
           />
         </TabsContent>
 
@@ -827,6 +891,7 @@ export function NesconCashFlowView() {
               isLoading={loadingSummary} 
               totalProjectedExpense={grandTotalProjectedExpense}
               contractRevenuePerMonth={contractRevenuePerMonth}
+              coraExecutedRevenue={coraExecutedRevenue}
               filterMonths={(() => {
                 const s = parseISO(filters.startDate);
                 const e = parseISO(filters.endDate);
