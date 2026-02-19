@@ -192,7 +192,7 @@ function NesconProjectionView({
       if (!months.some(m => isSameMonth(m, txDate))) return;
       
       const group = tx.account?.group_number;
-      if (!group || group > 11) return;
+      if (!group || group > 12) return;
 
       if (!groupTotals[group]) {
         groupTotals[group] = {};
@@ -234,6 +234,7 @@ function NesconProjectionView({
       9: '9 - Materiais de Limpeza',
       10: '10 - Taxas',
       11: '11 - Despesas Financeiras',
+      12: '12 - Reservas',
     };
 
     // Build DRE rows
@@ -255,10 +256,11 @@ function NesconProjectionView({
       { label: GROUP_NAMES[9], type: 'group', groupNum: 9, getValue: (k) => groupTotals[9]?.[k] || 0 },
       { label: GROUP_NAMES[10], type: 'group', groupNum: 10, getValue: (k) => groupTotals[10]?.[k] || 0 },
       { label: GROUP_NAMES[11], type: 'group', groupNum: 11, getValue: (k) => groupTotals[11]?.[k] || 0 },
+      { label: GROUP_NAMES[12], type: 'group', groupNum: 12, getValue: (k) => groupTotals[12]?.[k] || 0 },
       { label: '= Resultado Líquido', type: 'total', getValue: (k) => {
         const receitas = groupTotals[1]?.[k] || 0;
         let totalDesp = 0;
-        for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[k] || 0);
+        for (let g = 2; g <= 12; g++) totalDesp += (groupTotals[g]?.[k] || 0);
         return receitas - totalDesp;
       }},
     ];
@@ -268,7 +270,7 @@ function NesconProjectionView({
       const key = format(m, 'yyyy-MM');
       const receitas = groupTotals[1]?.[key] || 0;
       let totalDesp = 0;
-      for (let g = 2; g <= 11; g++) totalDesp += (groupTotals[g]?.[key] || 0);
+      for (let g = 2; g <= 12; g++) totalDesp += (groupTotals[g]?.[key] || 0);
       monthTotals[key] = receitas - totalDesp;
     });
 
