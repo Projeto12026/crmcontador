@@ -94,12 +94,16 @@ export function TransactionFormDialog({
     setFormData(getInitialFormData());
   };
 
-  // Filtrar contas por tipo (grupos 1-4 para receitas, 5-6 para despesas)
+  // Usar o tipo real da transação ao editar
+  const effectiveType = editingTransaction?.type || type;
+  
+  // Filtrar contas por tipo
   const filteredAccounts = accounts.filter(acc => {
-    if (type === 'income') {
+    if (effectiveType === 'income') {
       return acc.group_number >= 1 && acc.group_number <= 4;
     } else {
-      return (acc.group_number >= 5 && acc.group_number <= 6) || acc.group_number === 100 || acc.group_number === 200;
+      // Todas as contas de despesa (grupos 2+)
+      return acc.group_number >= 2 || acc.group_number === 100 || acc.group_number === 200;
     }
   });
 
