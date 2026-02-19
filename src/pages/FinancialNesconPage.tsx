@@ -78,7 +78,7 @@ export function FinancialNesconPage() {
 
   const categoriesFlat = useMemo(() => {
     if (!allCategoriesFlat) return allCategoriesFlat;
-    return allCategoriesFlat.filter(c => c.group_number <= 11 && !c.id.startsWith('F'));
+    return allCategoriesFlat.filter(c => c.group_number <= 12 && !c.id.startsWith('F'));
   }, [allCategoriesFlat]);
   const { data: transactions, isLoading: loadingTransactions } = useCashFlowTransactions({
     startDate: filters.startDate,
