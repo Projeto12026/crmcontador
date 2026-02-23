@@ -185,6 +185,10 @@ app.post('/api/cora/search-invoices', async (req, res) => {
 });
 
 // ── Download PDF ─────────────────────────────────────
+// Alinha com a lógica do api_cora:
+// 1) GET /v2/invoices/{invoiceId} via mTLS para obter detalhes
+// 2) Ler payment_options.bank_slip.url
+// 3) Fazer GET direto nessa URL (sem mTLS) para baixar o PDF
 app.post('/api/cora/download-pdf', async (req, res) => {
   try {
     const { token, invoiceId } = req.body;
@@ -198,36 +202,60 @@ app.post('/api/cora/download-pdf', async (req, res) => {
       return res.status(500).json({ error: 'Certificados mTLS não encontrados' });
     }
 
-    const url = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}/document`;
+    // 1) Buscar detalhes do boleto na API Cora
+    const invoiceUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}`;
+    const invoiceResp = await mtlsGet(invoiceUrl, token, certs);
 
-    const buffer = await new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const options = {
-        hostname: urlObj.hostname,
-        path: urlObj.pathname,
-        method: 'GET',
-        cert: certs.cert,
-        key: certs.key,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      };
-
-      const request = https.request(options, (resp) => {
-        const chunks = [];
-        resp.on('data', (chunk) => chunks.push(chunk));
-        resp.on('end', () => {
-          const body = Buffer.concat(chunks);
-          if (resp.statusCode !== 200) {
-            return reject(new Error(`Status ${resp.statusCode}: ${body.toString().substring(0, 500)}`));
-          }
-          resolve(body);
-        });
+    if (invoiceResp.status !== 200) {
+      let detail;
+      try { detail = JSON.parse(invoiceResp.body); } catch { detail = invoiceResp.body; }
+      console.error('Erro ao buscar detalhes do boleto para PDF:', invoiceResp.status, detail);
+      return res.status(502).json({
+        error: 'Erro ao buscar informações do boleto para PDF',
+        detail,
       });
+    }
 
-      request.on('error', (err) => reject(err));
-      request.end();
+    let invoiceData;
+    try {
+      invoiceData = JSON.parse(invoiceResp.body);
+    } catch (e) {
+      console.error('Erro ao parsear JSON do boleto para PDF:', e);
+      return res.status(500).json({
+        error: 'Resposta inválida da API Cora ao obter detalhes do boleto',
+        detail: e.message,
+      });
+    }
+
+    const pdfUrl = invoiceData?.payment_options?.bank_slip?.url;
+    if (!pdfUrl) {
+      console.error('URL do PDF não encontrada em payment_options.bank_slip.url');
+      return res.status(404).json({
+        error: 'PDF não disponível para este boleto',
+        message: 'Este boleto não possui PDF disponível na API Cora',
+      });
+    }
+
+    // 2) Baixar o PDF diretamente da URL retornada pela Cora
+    const pdfResponse = await fetch(pdfUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/pdf',
+      },
     });
+
+    if (!pdfResponse.ok) {
+      const text = await pdfResponse.text().catch(() => '');
+      console.error('Erro ao baixar PDF da URL da Cora:', pdfResponse.status, text.substring(0, 500));
+      return res.status(502).json({
+        error: 'Erro ao baixar PDF da URL fornecida pela Cora',
+        status: pdfResponse.status,
+        detail: text.substring(0, 500),
+      });
+    }
+
+    const arrayBuffer = await pdfResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
     res.set('Content-Type', 'application/pdf');
     res.send(buffer);
@@ -257,10 +285,12 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     cleanPhone = '55' + cleanPhone;
   }
 
+  // Wascript API: token vai na URL, não em Authorization. Endpoint correto: /api/enviar-texto/{token}
   const response = await fetch(`${apiUrl}/api/enviar-texto/${token}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
     body: JSON.stringify({
       phone: cleanPhone,
@@ -276,13 +306,7 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
     throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
   }
-  if (!response.ok) {
-    const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
-    if (errMsg.toLowerCase().includes('reconecte') || errMsg.toLowerCase().includes('token')) {
-      throw new Error('Sessão WhatsApp desconectada. Reconecte o token no painel da Wascript e tente novamente.');
-    }
-    throw new Error(errMsg);
-  }
+  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
   return data;
 }
 
@@ -297,10 +321,12 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
 
   const base64 = pdfBuffer.toString('base64');
 
+  // Wascript API: token na URL. Endpoint correto: /api/enviar-documento/{token}. Body usa "name", não "filename".
   const response = await fetch(`${apiUrl}/api/enviar-documento/${token}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
     body: JSON.stringify({
       phone: cleanPhone,
@@ -317,13 +343,7 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
     console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
     throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
   }
-  if (!response.ok) {
-    const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
-    if (errMsg.toLowerCase().includes('reconecte') || errMsg.toLowerCase().includes('token')) {
-      throw new Error('Sessão WhatsApp desconectada. Reconecte o token no painel da Wascript e tente novamente.');
-    }
-    throw new Error(errMsg);
-  }
+  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
   return data;
 }
 
@@ -358,13 +378,13 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
     let pdfSent = false;
 
-    // Try to download and send PDF if we have invoiceId and token
+    // Tentar baixar e enviar o PDF se tivermos invoiceId
     if (invoiceId) {
       try {
-        // Get a fresh token for PDF download
         const clientId = process.env.CORA_CLIENT_ID;
         const certs = loadCertificates();
         if (clientId && certs) {
+          // 1) Obter token de acesso direto na Cora (mTLS)
           const tokenUrl = 'https://matls-clients.api.cora.com.br/token';
           const tokenBody = new URLSearchParams({
             grant_type: 'client_credentials',
@@ -396,77 +416,53 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
           const tokenParsed = JSON.parse(tokenResponse.body);
           if (tokenResponse.status === 200 && tokenParsed.access_token) {
-            // Step 1: GET invoice details to find PDF URL
-            const invoiceDetailsUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}`;
-            const invoiceDetails = await new Promise((resolve, reject) => {
-              const u = new URL(invoiceDetailsUrl);
-              const opts = {
-                hostname: u.hostname, path: u.pathname, method: 'GET',
-                cert: certs.cert, key: certs.key,
-                headers: { 'Authorization': `Bearer ${tokenParsed.access_token}` },
-              };
-              const r = https.request(opts, (resp) => {
-                let data = '';
-                resp.on('data', (c) => (data += c));
-                resp.on('end', () => {
-                  if (resp.statusCode === 200) {
-                    try { resolve(JSON.parse(data)); } catch { resolve(null); }
-                  } else {
-                    console.error(`[Cora] Invoice details status ${resp.statusCode}:`, data.slice(0, 300));
-                    resolve(null);
-                  }
+            const accessToken = tokenParsed.access_token;
+
+            // 2) Buscar detalhes do boleto para obter payment_options.bank_slip.url
+            const invoiceUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}`;
+            const invoiceResp = await mtlsGet(invoiceUrl, accessToken, certs);
+
+            if (invoiceResp.status === 200) {
+              let invoiceData;
+              try {
+                invoiceData = JSON.parse(invoiceResp.body);
+              } catch (e) {
+                console.error('Erro ao parsear JSON do boleto (process-boleto-complete):', e);
+                invoiceData = null;
+              }
+
+              const pdfUrl = invoiceData?.payment_options?.bank_slip?.url;
+              if (pdfUrl) {
+                // 3) Baixar o PDF diretamente da URL retornada pela Cora
+                const pdfResponse = await fetch(pdfUrl, {
+                  method: 'GET',
+                  headers: { 'Accept': 'application/pdf' },
                 });
-              });
-              r.on('error', (err) => { console.error('[Cora] Invoice details error:', err.message); resolve(null); });
-              r.end();
-            });
 
-            // Step 2: Extract PDF URL from payment_options.bank_slip.url
-            const bankSlipUrl = invoiceDetails?.payment_options?.bank_slip?.url;
-            if (!bankSlipUrl) {
-              console.error('[Cora] PDF URL not found in invoice details. Keys:', invoiceDetails ? Object.keys(invoiceDetails) : 'null');
-            }
+                if (pdfResponse.ok) {
+                  const arrayBuffer = await pdfResponse.arrayBuffer();
+                  const pdfBuffer = Buffer.from(arrayBuffer);
 
-            // Step 3: Download the PDF binary from the bank slip URL
-            const pdfBuffer = bankSlipUrl ? await new Promise((resolve) => {
-              const u = new URL(bankSlipUrl);
-              const protocol = u.protocol === 'https:' ? https : require('http');
-              const opts = {
-                hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
-              };
-              const r = protocol.request(opts, (resp) => {
-                // Follow redirects
-                if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
-                  const redirectUrl = new URL(resp.headers.location);
-                  const proto2 = redirectUrl.protocol === 'https:' ? https : require('http');
-                  const r2 = proto2.request({ hostname: redirectUrl.hostname, path: redirectUrl.pathname + redirectUrl.search, method: 'GET' }, (resp2) => {
-                    const chunks = [];
-                    resp2.on('data', (c) => chunks.push(c));
-                    resp2.on('end', () => resp2.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
-                  });
-                  r2.on('error', () => resolve(null));
-                  r2.end();
-                  return;
+                  const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
+                  const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
+                  await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
+                  pdfSent = true;
+                  await new Promise(r => setTimeout(r, 1500));
+                } else {
+                  const text = await pdfResponse.text().catch(() => '');
+                  console.error('Erro ao baixar PDF na process-boleto-complete:', pdfResponse.status, text.substring(0, 500));
                 }
-                const chunks = [];
-                resp.on('data', (c) => chunks.push(c));
-                resp.on('end', () => resp.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
-              });
-              r.on('error', () => resolve(null));
-              r.end();
-            }) : null;
-            if (pdfBuffer) {
-              const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
-              const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
-              await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
-              pdfSent = true;
-              await new Promise(r => setTimeout(r, 1500));
+              } else {
+                console.warn('payment_options.bank_slip.url não encontrada para o boleto', invoiceId);
+              }
+            } else {
+              console.error('Erro ao buscar detalhes do boleto na process-boleto-complete:', invoiceResp.status, invoiceResp.body.substring(0, 500));
             }
           }
         }
       } catch (pdfErr) {
         console.error('Erro ao enviar PDF:', pdfErr.message);
-        // Continue to send text message even if PDF fails
+        // Continua para envio da mensagem de texto mesmo se PDF falhar
       }
     }
 
