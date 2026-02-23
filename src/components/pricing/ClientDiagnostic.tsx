@@ -3,7 +3,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { Building2, Users, FileText, DollarSign, MapPin, Shield, AlertTriangle } from 'lucide-react';
 
 export interface DiagnosticData {
@@ -70,18 +69,12 @@ export function ClientDiagnostic({ data, onChange, clients }: Props) {
     onChange(newData);
   };
 
-  // Complexity score preview
-  const score = computeComplexityScore(data);
-
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Building2 className="h-4 w-4" />
           Diagnóstico do Cliente
-          <Badge variant={score > 1.5 ? 'destructive' : score > 1.2 ? 'secondary' : 'outline'} className="ml-auto">
-            Score: {score.toFixed(2)}x
-          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -182,116 +175,9 @@ export function ClientDiagnostic({ data, onChange, clients }: Props) {
           </div>
         </div>
 
-        {/* Score breakdown */}
-        <div className="rounded-lg bg-muted p-3">
-          <p className="text-xs font-medium text-muted-foreground mb-2">Decomposição do Score de Complexidade</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
-            <ScorePill label="Regime" value={getRegimeScore(data.taxRegime)} />
-            <ScorePill label="Atividade" value={getCompanyTypeScore(data.companyType)} />
-            <ScorePill label="Funcionários" value={getEmployeeScore(data.numEmployees)} />
-            <ScorePill label="NFs" value={getInvoiceScore(data.numInvoices)} />
-            <ScorePill label="Faturamento" value={getRevenueScore(data.revenueBracket)} />
-            <ScorePill label="Filiais" value={getBranchScore(data.numBranches)} />
-            <ScorePill label="Fiscal" value={getFiscalScore(data.fiscalComplexity)} />
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
-}
-
-function ScorePill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="text-center rounded bg-background p-1.5">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className={`font-bold ${value > 1 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>
-        {value > 1 ? '+' : ''}{((value - 1) * 100).toFixed(0)}%
-      </p>
-    </div>
-  );
-}
-
-// ===== SCORING FUNCTIONS =====
-
-function getRegimeScore(regime: string): number {
-  switch (regime) {
-    case 'mei': return 0.6;
-    case 'simples': return 1.0;
-    case 'lucro_presumido': return 1.2;
-    case 'lucro_real': return 1.5;
-    default: return 1.0;
-  }
-}
-
-function getCompanyTypeScore(type: string): number {
-  switch (type) {
-    case 'servicos': return 1.0;
-    case 'comercio': return 1.1;
-    case 'industria': return 1.3;
-    case 'misto': return 1.25;
-    default: return 1.0;
-  }
-}
-
-function getEmployeeScore(count: number): number {
-  if (count === 0) return 0.8;
-  if (count <= 5) return 1.0;
-  if (count <= 20) return 1.1;
-  if (count <= 50) return 1.25;
-  if (count <= 100) return 1.4;
-  return 1.6;
-}
-
-function getInvoiceScore(count: number): number {
-  if (count <= 10) return 1.0;
-  if (count <= 50) return 1.05;
-  if (count <= 200) return 1.15;
-  if (count <= 500) return 1.25;
-  return 1.4;
-}
-
-function getRevenueScore(bracket: string): number {
-  switch (bracket) {
-    case 'ate_100k': return 1.0;
-    case '100k_500k': return 1.1;
-    case '500k_2m': return 1.2;
-    case 'acima_2m': return 1.35;
-    default: return 1.0;
-  }
-}
-
-function getBranchScore(count: number): number {
-  if (count === 0) return 1.0;
-  if (count === 1) return 1.15;
-  if (count <= 3) return 1.3;
-  return 1.5;
-}
-
-function getFiscalScore(complexity: string): number {
-  switch (complexity) {
-    case 'baixa': return 1.0;
-    case 'media': return 1.1;
-    case 'alta': return 1.25;
-    case 'muito_alta': return 1.4;
-    default: return 1.0;
-  }
-}
-
-export function computeComplexityScore(data: DiagnosticData): number {
-  // Use geometric mean of all factors for balanced scoring
-  const factors = [
-    getRegimeScore(data.taxRegime),
-    getCompanyTypeScore(data.companyType),
-    getEmployeeScore(data.numEmployees),
-    getInvoiceScore(data.numInvoices),
-    getRevenueScore(data.revenueBracket),
-    getBranchScore(data.numBranches),
-    getFiscalScore(data.fiscalComplexity),
-  ];
-  
-  // Geometric mean
-  const product = factors.reduce((acc, f) => acc * f, 1);
-  return Math.pow(product, 1 / factors.length);
 }
 
 export function getDefaultDiagnostic(): DiagnosticData {

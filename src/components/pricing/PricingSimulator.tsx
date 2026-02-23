@@ -12,7 +12,7 @@ import { Calculator, Save, Loader2, Clock, DollarSign, Zap, Plus, Trash2 } from 
 import { useServiceCatalog, useCreatePricingProposal, PricingServiceCatalog } from '@/hooks/usePricing';
 import { useClients } from '@/hooks/useClients';
 import { PricingCostConfig, CostConfig, getDefaultCostConfig } from './PricingCostConfig';
-import { ClientDiagnostic, DiagnosticData, computeComplexityScore, getDefaultDiagnostic } from './ClientDiagnostic';
+import { ClientDiagnostic, DiagnosticData, getDefaultDiagnostic } from './ClientDiagnostic';
 import { ClientProfitability } from './ClientProfitability';
 
 const DEPARTMENTS: Record<string, string> = {
@@ -117,11 +117,8 @@ export function PricingSimulator() {
   const totalRecurringValue = recurringServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s), 0);
   const totalExtraValue = extraServices.reduce((sum, s) => sum + s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s), 0);
 
-  const complexityScore = computeComplexityScore(diagnostic);
-  const adjustedRecurringTotal = totalRecurringValue * complexityScore;
-  const adjustedExtraTotal = totalExtraValue * complexityScore;
   const totalSurcharges = surcharges.reduce((sum, s) => sum + s.value, 0);
-  const grandTotal = adjustedRecurringTotal + adjustedExtraTotal + totalSurcharges;
+  const grandTotal = totalRecurringValue + totalExtraValue + totalSurcharges;
 
   const isStandaloneProposal = !diagnostic.clientId;
 
@@ -131,7 +128,6 @@ export function PricingSimulator() {
       if (!grouped[s.department]) grouped[s.department] = { hours: 0, value: 0 };
       grouped[s.department].hours += s.hours;
       grouped[s.department].value += s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s);
-      grouped[s.department].value += s.hours * getDeptHourlyRate(s.department);
     });
     return grouped;
   }, [activeServices, costConfig, totalMarkup]);
@@ -143,7 +139,7 @@ export function PricingSimulator() {
       department: s.department,
       hours_per_month: s.hours,
       hourly_rate: getDeptHourlyRate(s.department),
-      monthly_value: (s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s)) * complexityScore,
+      monthly_value: s.hours * getDeptHourlyRate(s.department) + getAdditionalEmployeeCost(s),
     }));
 
     const selectedClient = clients?.find(c => c.id === diagnostic.clientId);
@@ -316,13 +312,27 @@ export function PricingSimulator() {
           {/* Por departamento */}
           {Object.entries(byDepartment).length > 0 ? (
             <>
-              {Object.entries(byDepartment).map(([dept, data]) => (
-                <div key={dept} className="flex items-center justify-between text-sm">
-                  <span>{DEPARTMENTS[dept] || dept}</span>
-                  <span className="text-muted-foreground">{data.hours}h × R$ {getDeptHourlyRate(dept).toFixed(0)}</span>
-                  <span className="font-medium">R$ {data.value.toFixed(2)}</span>
-                </div>
-              ))}
+              {/* Detalhamento por serviço */}
+              {Object.entries(DEPARTMENTS).map(([deptKey, deptLabel]) => {
+                const deptServices = activeServices.filter(s => s.department === deptKey);
+                if (deptServices.length === 0) return null;
+                return (
+                  <div key={deptKey} className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{deptLabel}</p>
+                    {deptServices.map((s, idx) => {
+                      const empCost = getAdditionalEmployeeCost(s);
+                      const lineTotal = s.hours * getDeptHourlyRate(s.department) + empCost;
+                      return (
+                        <div key={idx} className="flex items-center justify-between text-sm pl-2">
+                          <span className="flex-1">{s.name}</span>
+                          <span className="text-muted-foreground text-xs mx-2">{s.hours}h × R$ {getDeptHourlyRate(s.department).toFixed(0)}</span>
+                          <span className="font-medium w-24 text-right">R$ {lineTotal.toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
               <Separator />
 
               {/* Subtotals */}
@@ -342,31 +352,17 @@ export function PricingSimulator() {
                 </div>
               )}
 
-              {complexityScore !== 1 && (
-                <>
-                  <Separator />
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      Fator de complexidade (score: {complexityScore.toFixed(2)}x)
-                    </span>
-                    <span className="text-muted-foreground">
-                      {complexityScore > 1 ? '+' : '-'} R$ {Math.abs((adjustedRecurringTotal + adjustedExtraTotal) - totalRecurringValue - totalExtraValue).toFixed(2)}
-                    </span>
-                  </div>
-                </>
-              )}
-
               <Separator />
 
               <div className="flex items-center justify-between">
                 <span className="text-lg font-bold">Honorário Mensal</span>
-                <span className="text-2xl font-bold text-primary">R$ {adjustedRecurringTotal.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-primary">R$ {totalRecurringValue.toFixed(2)}</span>
               </div>
 
               {extraServices.length > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">+ Serviços Extras</span>
-                  <span className="font-medium">R$ {adjustedExtraTotal.toFixed(2)}</span>
+                  <span className="font-medium">R$ {totalExtraValue.toFixed(2)}</span>
                 </div>
               )}
 
