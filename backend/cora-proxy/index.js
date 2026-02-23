@@ -275,6 +275,33 @@ function getWascriptConfig(body = {}) {
   };
 }
 
+// Erros que indicam falha temporária (sessão/conexão) e vale tentar de novo
+function isTransientWascriptError(err) {
+  const msg = (err && err.message) ? String(err.message) : '';
+  return /reconecte|token|sessão whatsapp|desconectad|desconhecido/i.test(msg);
+}
+
+// Executa uma chamada Wascript com até 3 tentativas quando o erro for de sessão/token
+async function withWascriptRetry(fn, context = '') {
+  const maxAttempts = 3;
+  const delayMs = 4000;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (isTransientWascriptError(e) && attempt < maxAttempts) {
+        console.warn(`[Wascript${context}] Falha temporária (${attempt}/${maxAttempts}):`, e.message?.slice(0, 120), '- nova tentativa em', delayMs, 'ms');
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 async function sendWhatsappMessage(phone, message, wascriptConfig) {
   const { apiUrl, token } = wascriptConfig;
   if (!apiUrl || !token) throw new Error('Wascript API URL ou token não configurado');
@@ -285,29 +312,30 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     cleanPhone = '55' + cleanPhone;
   }
 
-  // Wascript API: token vai na URL, não em Authorization. Endpoint correto: /api/enviar-texto/{token}
-  const response = await fetch(`${apiUrl}/api/enviar-texto/${token}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      phone: cleanPhone,
-      message,
-    }),
-  });
+  return withWascriptRetry(async () => {
+    const response = await fetch(`${apiUrl}/api/enviar-texto/${token}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: cleanPhone,
+        message,
+      }),
+    });
 
-  const responseText = await response.text();
-  let data;
-  try {
-    data = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
-    throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
-  }
-  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
-  return data;
+    const responseText = await response.text();
+    let data;
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
+      throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
+    }
+    if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+    return data;
+  }, ' sendText');
 }
 
 async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConfig) {
@@ -321,30 +349,31 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
 
   const base64 = pdfBuffer.toString('base64');
 
-  // Wascript API: token na URL. Endpoint correto: /api/enviar-documento/{token}. Body usa "name", não "filename".
-  const response = await fetch(`${apiUrl}/api/enviar-documento/${token}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      phone: cleanPhone,
-      base64: `data:application/pdf;base64,${base64}`,
-      name: filename || 'boleto.pdf',
-    }),
-  });
+  return withWascriptRetry(async () => {
+    const response = await fetch(`${apiUrl}/api/enviar-documento/${token}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: cleanPhone,
+        base64: `data:application/pdf;base64,${base64}`,
+        name: filename || 'boleto.pdf',
+      }),
+    });
 
-  const responseText2 = await response.text();
-  let data;
-  try {
-    data = responseText2 ? JSON.parse(responseText2) : {};
-  } catch {
-    console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
-    throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
-  }
-  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
-  return data;
+    const responseText2 = await response.text();
+    let data;
+    try {
+      data = responseText2 ? JSON.parse(responseText2) : {};
+    } catch {
+      console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
+      throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
+    }
+    if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+    return data;
+  }, ' sendFile');
 }
 
 // ── Send reminder (text only) ──────────────────────

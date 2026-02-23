@@ -87,6 +87,16 @@ function gerarDataVencimento(diaVencimento: number, mes: number, ano: number): D
 
 const STORAGE_KEY = 'ultimo_envio_boletos_cora';
 
+/** Mensagem amigável para erros temporários de WhatsApp (token/sessão); incentiva nova tentativa. */
+function formatEnvioErrorMessage(error: string | undefined): string {
+  if (!error) return '';
+  const lower = error.toLowerCase();
+  if (lower.includes('reconecte') || lower.includes('sessão whatsapp') || lower.includes('desconectad') || (lower.includes('erro desconhecido') && lower.includes('token'))) {
+    return 'Falha temporária na conexão com o WhatsApp. Tente enviar novamente em alguns segundos.';
+  }
+  return error;
+}
+
 export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, competenciaAno }: Props) {
   const { toast } = useToast();
   const { data: configs } = useCoraConfig();
@@ -588,7 +598,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
                   <div key={i} className="text-xs p-2 bg-background rounded border border-destructive/20">
                     <span className="font-medium">{r.empresa}</span>
                     {r.etapa && <Badge variant="outline" className="ml-1 text-[10px]">{r.etapa}</Badge>}
-                    <span className="text-destructive ml-2">{r.error}</span>
+                    <span className="text-destructive ml-2">{formatEnvioErrorMessage(r.error)}</span>
                   </div>
                 ))}
               </div>
@@ -615,7 +625,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
                     {r.success && r.mensagemEnviada && <Badge variant="outline" className="text-[10px]">Mensagem</Badge>}
                     {r.success && r.pdfEnviado && <Badge variant="outline" className="text-[10px]">PDF</Badge>}
                     {r.success && r.lembreteEnviado && <Badge variant="outline" className="text-[10px]">Lembrete</Badge>}
-                    {!r.success && <span className="text-destructive text-[10px]">{r.error}</span>}
+                    {!r.success && <span className="text-destructive text-[10px]">{formatEnvioErrorMessage(r.error)}</span>}
                   </div>
                 ))}
               </div>
