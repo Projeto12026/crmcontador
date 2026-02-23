@@ -142,9 +142,19 @@ function DashboardTab() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [envioFilter, setEnvioFilter] = useState<string>('ALL');
 
+  const { data: configs } = useCoraConfig();
   const { data: empresas, isLoading: loadingEmpresas } = useCoraEmpresas();
   const { data: boletos, isLoading: loadingBoletos } = useCoraBoletos(competenciaAno, competenciaMes);
   const syncBoletos = useSyncBoletos();
+
+  const backendBaseUrl = useMemo(() => {
+    const apiCfg = configs?.find(c => c.chave === 'cora_api');
+    const tokenUrl = (apiCfg?.valor as any)?.backend_token_url || '';
+    if (tokenUrl) {
+      try { return new URL(tokenUrl).origin; } catch { return ''; }
+    }
+    return '';
+  }, [configs]);
 
   const activeEmpresas = useMemo(() => empresas?.filter(e => e.is_active) || [], [empresas]);
 
@@ -239,7 +249,7 @@ function DashboardTab() {
             variant="outline"
             size="sm"
             disabled={syncBoletos.isPending}
-            onClick={() => syncBoletos.mutate({ competenciaAno, competenciaMes })}
+            onClick={() => syncBoletos.mutate({ competenciaAno, competenciaMes, backendBaseUrl })}
           >
             {syncBoletos.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
             Sincronizar
