@@ -269,7 +269,14 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     }),
   });
 
-  const data = await response.json().catch(() => ({ error: 'Resposta inválida' }));
+  const responseText = await response.text();
+  let data;
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
+    throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
+  }
   if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
   return data;
 }
@@ -299,7 +306,14 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
     }),
   });
 
-  const data = await response.json().catch(() => ({ error: 'Resposta inválida' }));
+  const responseText2 = await response.text();
+  let data;
+  try {
+    data = responseText2 ? JSON.parse(responseText2) : {};
+  } catch {
+    console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
+    throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
+  }
   if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
   return data;
 }
