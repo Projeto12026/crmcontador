@@ -257,11 +257,10 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     cleanPhone = '55' + cleanPhone;
   }
 
-  const response = await fetch(`${apiUrl}/api/sendText`, {
+  const response = await fetch(`${apiUrl}/api/enviar-texto/${token}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
       phone: cleanPhone,
@@ -292,17 +291,15 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
 
   const base64 = pdfBuffer.toString('base64');
 
-  const response = await fetch(`${apiUrl}/api/sendFile`, {
+  const response = await fetch(`${apiUrl}/api/enviar-documento/${token}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
       phone: cleanPhone,
       base64: `data:application/pdf;base64,${base64}`,
-      filename: filename || 'boleto.pdf',
-      caption: caption || '',
+      name: filename || 'boleto.pdf',
     }),
   });
 
