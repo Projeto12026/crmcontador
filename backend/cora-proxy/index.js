@@ -276,7 +276,13 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
     throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
   }
-  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+  if (!response.ok) {
+    const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
+    if (errMsg.toLowerCase().includes('reconecte') || errMsg.toLowerCase().includes('token')) {
+      throw new Error('Sessão WhatsApp desconectada. Reconecte o token no painel da Wascript e tente novamente.');
+    }
+    throw new Error(errMsg);
+  }
   return data;
 }
 
@@ -311,7 +317,13 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
     console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
     throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
   }
-  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+  if (!response.ok) {
+    const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
+    if (errMsg.toLowerCase().includes('reconecte') || errMsg.toLowerCase().includes('token')) {
+      throw new Error('Sessão WhatsApp desconectada. Reconecte o token no painel da Wascript e tente novamente.');
+    }
+    throw new Error(errMsg);
+  }
   return data;
 }
 

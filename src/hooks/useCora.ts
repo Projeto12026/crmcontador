@@ -280,9 +280,10 @@ export function useSyncBoletos() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async ({ competenciaAno, competenciaMes }: { competenciaAno: number; competenciaMes: number }) => {
+    mutationFn: async ({ competenciaAno, competenciaMes, backendBaseUrl }: { competenciaAno: number; competenciaMes: number; backendBaseUrl?: string }) => {
+      const base = backendBaseUrl || '';
       // 1. Get token via proxy
-      const tokenRes = await fetch(`/api/cora/get-token`, { method: 'POST' });
+      const tokenRes = await fetch(`${base}/api/cora/get-token`, { method: 'POST' });
       if (!tokenRes.ok) {
         const err = await tokenRes.json().catch(() => ({}));
         throw new Error(err.error || `Erro ao obter token: HTTP ${tokenRes.status}`);
@@ -301,7 +302,7 @@ export function useSyncBoletos() {
       let totalItems = Infinity;
 
       while (allInvoices.length < totalItems) {
-        const invoicesRes = await fetch(`/api/cora/search-invoices`, {
+        const invoicesRes = await fetch(`${base}/api/cora/search-invoices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: access_token, start, end, page, perPage }),
