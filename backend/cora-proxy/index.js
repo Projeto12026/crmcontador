@@ -384,22 +384,65 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
           const tokenParsed = JSON.parse(tokenResponse.body);
           if (tokenResponse.status === 200 && tokenParsed.access_token) {
-            const pdfUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}/document`;
-            const pdfBuffer = await new Promise((resolve, reject) => {
-              const u = new URL(pdfUrl);
+            // Step 1: GET invoice details to find PDF URL
+            const invoiceDetailsUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}`;
+            const invoiceDetails = await new Promise((resolve, reject) => {
+              const u = new URL(invoiceDetailsUrl);
               const opts = {
                 hostname: u.hostname, path: u.pathname, method: 'GET',
                 cert: certs.cert, key: certs.key,
                 headers: { 'Authorization': `Bearer ${tokenParsed.access_token}` },
               };
               const r = https.request(opts, (resp) => {
+                let data = '';
+                resp.on('data', (c) => (data += c));
+                resp.on('end', () => {
+                  if (resp.statusCode === 200) {
+                    try { resolve(JSON.parse(data)); } catch { resolve(null); }
+                  } else {
+                    console.error(`[Cora] Invoice details status ${resp.statusCode}:`, data.slice(0, 300));
+                    resolve(null);
+                  }
+                });
+              });
+              r.on('error', (err) => { console.error('[Cora] Invoice details error:', err.message); resolve(null); });
+              r.end();
+            });
+
+            // Step 2: Extract PDF URL from payment_options.bank_slip.url
+            const bankSlipUrl = invoiceDetails?.payment_options?.bank_slip?.url;
+            if (!bankSlipUrl) {
+              console.error('[Cora] PDF URL not found in invoice details. Keys:', invoiceDetails ? Object.keys(invoiceDetails) : 'null');
+            }
+
+            // Step 3: Download the PDF binary from the bank slip URL
+            const pdfBuffer = bankSlipUrl ? await new Promise((resolve) => {
+              const u = new URL(bankSlipUrl);
+              const protocol = u.protocol === 'https:' ? https : require('http');
+              const opts = {
+                hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+              };
+              const r = protocol.request(opts, (resp) => {
+                // Follow redirects
+                if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+                  const redirectUrl = new URL(resp.headers.location);
+                  const proto2 = redirectUrl.protocol === 'https:' ? https : require('http');
+                  const r2 = proto2.request({ hostname: redirectUrl.hostname, path: redirectUrl.pathname + redirectUrl.search, method: 'GET' }, (resp2) => {
+                    const chunks = [];
+                    resp2.on('data', (c) => chunks.push(c));
+                    resp2.on('end', () => resp2.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
+                  });
+                  r2.on('error', () => resolve(null));
+                  r2.end();
+                  return;
+                }
                 const chunks = [];
                 resp.on('data', (c) => chunks.push(c));
                 resp.on('end', () => resp.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
               });
               r.on('error', () => resolve(null));
               r.end();
-            });
+            }) : null;
             if (pdfBuffer) {
               const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
               const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
