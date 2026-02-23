@@ -289,6 +289,9 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         // Resolve message template based on status
         const templateKey = empresa.boletoStatus === 'LATE' ? 'after_due' : 'before_due';
         const mensagem = resolveTemplate(templateKey, empresa);
+        if (!mensagem.trim()) {
+          throw new Error(`Template de mensagem "${templateKey}" não encontrado ou inativo. Ative o template em Parâmetros do Cora.`);
+        }
 
         const response = await fetch(`${backendUrl}/api/notifications/whatsapp-optimized/process-boleto-complete`, {
           method: 'POST',
@@ -420,6 +423,9 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         const isToday = dueDateObj && dueDateObj.getTime() === hoje.getTime();
         const templateKey = isToday ? 'reminder_today' : 'reminder';
         const mensagem = resolveTemplate(templateKey, empresa);
+        if (!mensagem.trim()) {
+          throw new Error(`Template de mensagem "${templateKey}" não encontrado ou inativo. Ative o template em Parâmetros do Cora.`);
+        }
 
         const response = await fetch(`${backendUrl}/api/notifications/whatsapp-optimized/send-reminder`, {
           method: 'POST',

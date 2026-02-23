@@ -472,7 +472,7 @@ export function useCoraMessageTemplates() {
     queryKey: ['cora-message-templates'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('cora_message_templates' as any)
+        .from('cora_message_templates')
         .select('*')
         .order('template_key');
       if (error) throw error;
@@ -489,7 +489,7 @@ export function useUpdateCoraMessageTemplate() {
       const updates: any = { message_body };
       if (is_active !== undefined) updates.is_active = is_active;
       const { error } = await supabase
-        .from('cora_message_templates' as any)
+        .from('cora_message_templates')
         .update(updates)
         .eq('id', id);
       if (error) throw error;
