@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calculator, Save, Loader2, Clock, DollarSign, Zap } from 'lucide-react';
+import { Calculator, Save, Loader2, Clock, DollarSign, Zap, Plus, Trash2 } from 'lucide-react';
 import { useServiceCatalog, useCreatePricingProposal, PricingServiceCatalog } from '@/hooks/usePricing';
 import { useClients } from '@/hooks/useClients';
 import { PricingCostConfig, CostConfig, getDefaultCostConfig } from './PricingCostConfig';
@@ -41,6 +41,11 @@ interface SelectedService {
   num_employees: number;
 }
 
+interface Surcharge {
+  label: string;
+  value: number;
+}
+
 export function PricingSimulator() {
   const { data: catalog } = useServiceCatalog();
   const { data: clients } = useClients();
@@ -56,6 +61,9 @@ export function PricingSimulator() {
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [initialized, setInitialized] = useState(false);
   const [notes, setNotes] = useState('');
+
+  // Surcharges (acréscimos de mensalidade)
+  const [surcharges, setSurcharges] = useState<Surcharge[]>([]);
 
   // Initialize services from catalog
   if (catalog && !initialized) {
@@ -112,7 +120,10 @@ export function PricingSimulator() {
   const complexityScore = computeComplexityScore(diagnostic);
   const adjustedRecurringTotal = totalRecurringValue * complexityScore;
   const adjustedExtraTotal = totalExtraValue * complexityScore;
-  const grandTotal = adjustedRecurringTotal + adjustedExtraTotal;
+  const totalSurcharges = surcharges.reduce((sum, s) => sum + s.value, 0);
+  const grandTotal = adjustedRecurringTotal + adjustedExtraTotal + totalSurcharges;
+
+  const isStandaloneProposal = !diagnostic.clientId;
 
   const byDepartment = useMemo(() => {
     const grouped: Record<string, { hours: number; value: number }> = {};
@@ -137,17 +148,30 @@ export function PricingSimulator() {
 
     const selectedClient = clients?.find(c => c.id === diagnostic.clientId);
 
+    // Include surcharges info in notes
+    const surchargeNotes = surcharges.filter(s => s.value > 0).map(s => `Acréscimo: ${s.label || 'Sem descrição'} - R$ ${s.value.toFixed(2)}`).join('\n');
+    const fullNotes = [notes, surchargeNotes].filter(Boolean).join('\n\n');
+
+    // Add surcharges as proposal items
+    const surchargeItems = surcharges.filter(s => s.value > 0).map(s => ({
+      service_name: `Acréscimo: ${s.label || 'Acréscimo'}`,
+      department: 'consultoria',
+      hours_per_month: 0,
+      hourly_rate: 0,
+      monthly_value: s.value,
+    }));
+
     createProposal.mutate({
       client_id: diagnostic.clientId || null,
-      client_name: diagnostic.clientId ? selectedClient?.name || '' : diagnostic.clientName,
+      client_name: diagnostic.clientId ? selectedClient?.name || '' : (diagnostic.clientName || 'Proposta Avulsa'),
       tax_regime: diagnostic.taxRegime,
       num_employees: diagnostic.numEmployees,
       num_monthly_invoices: diagnostic.numInvoices,
       monthly_revenue: diagnostic.monthlyRevenue,
       hourly_cost: Object.values(costConfig.departments).reduce((sum, d) => sum + d.costPerHour, 0) / Object.keys(costConfig.departments).length,
       markup_percentage: totalMarkup,
-      notes,
-      items,
+      notes: fullNotes,
+      items: [...items, ...surchargeItems],
     });
   };
 
@@ -189,6 +213,7 @@ export function PricingSimulator() {
             clientName={diagnostic.clientName}
             calculatedIdealPrice={grandTotal}
             hasServicesSelected={activeServices.length > 0}
+            isStandaloneProposal={isStandaloneProposal}
           />
         </TabsContent>
 
@@ -325,7 +350,7 @@ export function PricingSimulator() {
                       Fator de complexidade (score: {complexityScore.toFixed(2)}x)
                     </span>
                     <span className="text-muted-foreground">
-                      {complexityScore > 1 ? '+' : '-'} R$ {Math.abs(grandTotal - totalRecurringValue - totalExtraValue).toFixed(2)}
+                      {complexityScore > 1 ? '+' : '-'} R$ {Math.abs((adjustedRecurringTotal + adjustedExtraTotal) - totalRecurringValue - totalExtraValue).toFixed(2)}
                     </span>
                   </div>
                 </>
@@ -344,6 +369,61 @@ export function PricingSimulator() {
                   <span className="font-medium">R$ {adjustedExtraTotal.toFixed(2)}</span>
                 </div>
               )}
+
+              {/* Acréscimos de Mensalidade */}
+              <Separator />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Acréscimos de Mensalidade</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSurcharges(prev => [...prev, { label: '', value: 0 }])}
+                    className="h-7 text-xs gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> Adicionar
+                  </Button>
+                </div>
+                {surcharges.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={s.label}
+                      onChange={e => setSurcharges(prev => prev.map((item, idx) => idx === i ? { ...item, label: e.target.value } : item))}
+                      placeholder="Ex: Certificado Digital, Software..."
+                      className="flex-1 h-8 text-xs"
+                    />
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">R$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={s.value}
+                        onChange={e => setSurcharges(prev => prev.map((item, idx) => idx === i ? { ...item, value: Number(e.target.value) } : item))}
+                        className="w-24 h-8 text-xs"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSurcharges(prev => prev.filter((_, idx) => idx !== i))}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+                {surcharges.length > 0 && totalSurcharges > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal Acréscimos</span>
+                    <span className="font-medium">+ R$ {totalSurcharges.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
 
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 flex items-center justify-between">
                 <span className="font-bold">Total Geral</span>

@@ -23,6 +23,7 @@ interface Props {
   clientName: string;
   calculatedIdealPrice: number;
   hasServicesSelected: boolean;
+  isStandaloneProposal?: boolean;
 }
 
 interface RequirementCheck {
@@ -32,7 +33,7 @@ interface RequirementCheck {
   icon: React.ReactNode;
 }
 
-export function ClientProfitability({ clientId, clientName, calculatedIdealPrice, hasServicesSelected }: Props) {
+export function ClientProfitability({ clientId, clientName, calculatedIdealPrice, hasServicesSelected, isStandaloneProposal }: Props) {
   const { data: contracts } = useContracts();
 
   const analysis = useMemo(() => {
@@ -65,19 +66,27 @@ export function ClientProfitability({ clientId, clientName, calculatedIdealPrice
 
   // Check what data the user needs to fill in
   const requirements = useMemo((): RequirementCheck[] => {
-    const checks: RequirementCheck[] = [
-      {
-        label: 'Cliente selecionado no diagnóstico',
-        location: 'Precificação → Simulador → aba "2. Diagnóstico"',
-        fulfilled: !!clientId,
-        icon: <Building2 className="h-3.5 w-3.5" />,
-      },
-      {
-        label: 'Contrato ativo cadastrado para o cliente',
-        location: 'Menu "Contratos" → criar contrato com valor mensal',
-        fulfilled: !!analysis && analysis.contractCount > 0,
-        icon: <FileText className="h-3.5 w-3.5" />,
-      },
+    const checks: RequirementCheck[] = [];
+    
+    // Only require client/contract when NOT a standalone proposal
+    if (!isStandaloneProposal) {
+      checks.push(
+        {
+          label: 'Cliente selecionado no diagnóstico',
+          location: 'Precificação → Simulador → aba "2. Diagnóstico"',
+          fulfilled: !!clientId,
+          icon: <Building2 className="h-3.5 w-3.5" />,
+        },
+        {
+          label: 'Contrato ativo cadastrado para o cliente',
+          location: 'Menu "Contratos" → criar contrato com valor mensal',
+          fulfilled: !!analysis && analysis.contractCount > 0,
+          icon: <FileText className="h-3.5 w-3.5" />,
+        },
+      );
+    }
+
+    checks.push(
       {
         label: 'Serviços selecionados na ficha técnica',
         location: 'Precificação → Simulador → aba "3. Serviços"',
@@ -90,9 +99,9 @@ export function ClientProfitability({ clientId, clientName, calculatedIdealPrice
         fulfilled: calculatedIdealPrice > 0,
         icon: <Calculator className="h-3.5 w-3.5" />,
       },
-    ];
+    );
     return checks;
-  }, [clientId, analysis, hasServicesSelected, calculatedIdealPrice]);
+  }, [clientId, analysis, hasServicesSelected, calculatedIdealPrice, isStandaloneProposal]);
 
   const allRequirementsMet = requirements.every(r => r.fulfilled);
   const fulfilledCount = requirements.filter(r => r.fulfilled).length;
