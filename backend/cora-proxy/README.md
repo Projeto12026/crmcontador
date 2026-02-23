@@ -10,6 +10,16 @@ Serviço de proxy para a API Cora com autenticação mTLS (certificado cliente).
 | POST   | `/api/cora/get-token`       | Obtém token via mTLS         |
 | POST   | `/api/cora/search-invoices` | Busca invoices por período   |
 | POST   | `/api/cora/download-pdf`    | Baixa PDF de um invoice      |
+| POST   | `/api/notifications/whatsapp-optimized/sync-clone` | Sincroniza Supabase → clone SQLite |
+| POST   | `/api/notifications/whatsapp-optimized/run-scheduled-sends` | Executa envios agendados (lê/escreve no clone) |
+| POST   | `/api/notifications/whatsapp-optimized/run-daily` | **Cron 10h:** executa sync-clone e depois run-scheduled-sends |
+
+## Automação (clone SQLite + cron 10h)
+
+A automação de envio de boletos usa um **clone SQLite** como espelho dos dados (empresas, boletos, templates, envios, config). O cron deve chamar **uma vez por dia às 10h** a rota `run-daily` (que faz sync Supabase → clone e em seguida os envios).
+
+- **URL do cron:** `POST .../api/notifications/whatsapp-optimized/run-daily?secret=SEU_CRON_SECRET`
+- **Variáveis adicionais:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, opcional `BACKEND_URL` (URL base do proxy para chamadas internas), opcional `CLONE_DB_PATH` (caminho do arquivo SQLite; padrão: `./data/cora-clone.db`).
 
 ## Variáveis de Ambiente
 
