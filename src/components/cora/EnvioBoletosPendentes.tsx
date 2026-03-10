@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -115,6 +116,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
   const [ultimoEnvioComErros, setUltimoEnvioComErros] = useState<EnvioResult | null>(null);
   const [ultimoEnvioCompleto, setUltimoEnvioCompleto] = useState<EnvioResult | null>(null);
   const [mostrarDetalhesUltimoEnvio, setMostrarDetalhesUltimoEnvio] = useState(false);
+  const [filtroDiaInicio, setFiltroDiaInicio] = useState<number | null>(null);
+  const [filtroDiaFim, setFiltroDiaFim] = useState<number | null>(null);
 
   // Load last send from localStorage
   useEffect(() => {
@@ -222,8 +225,24 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       });
     }
 
+    // Filter by due date day (interval)
+    if (filtroDiaInicio != null || filtroDiaFim != null) {
+      const inicio = filtroDiaInicio != null ? filtroDiaInicio : filtroDiaFim;
+      const fim = filtroDiaFim != null ? filtroDiaFim : filtroDiaInicio;
+      if (inicio != null && fim != null) {
+        filtered = filtered.filter(e => {
+          const dueDate = e.boleto?.due_date
+            ? parseLocalDate(e.boleto.due_date)
+            : gerarDataVencimento(e.dia_vencimento, competenciaMes, competenciaAno);
+          if (!dueDate) return false;
+          const dia = dueDate.getDate();
+          return dia >= inicio && dia <= fim;
+        });
+      }
+    }
+
     return filtered;
-  }, [empresasComStatus, filtroStatus, filtroFormaEnvio, sendType, somenteProximos, diasProximos, competenciaMes, competenciaAno]);
+  }, [empresasComStatus, filtroStatus, filtroFormaEnvio, sendType, somenteProximos, diasProximos, competenciaMes, competenciaAno, filtroDiaInicio, filtroDiaFim]);
 
   // Selection handlers
   const handleMarcarTodos = useCallback((checked: boolean) => {
@@ -722,6 +741,39 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
               </SelectContent>
             </Select>
           )}
+          {/* Filtro por dia de vencimento (intervalo) */}
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Dia vencimento (de)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                className="w-20"
+                value={filtroDiaInicio ?? ''}
+                onChange={e => {
+                  const v = e.target.value ? Number(e.target.value) : NaN;
+                  if (Number.isNaN(v)) setFiltroDiaInicio(null);
+                  else setFiltroDiaInicio(Math.min(31, Math.max(1, v)));
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Dia vencimento (até)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                className="w-20"
+                value={filtroDiaFim ?? ''}
+                onChange={e => {
+                  const v = e.target.value ? Number(e.target.value) : NaN;
+                  if (Number.isNaN(v)) setFiltroDiaFim(null);
+                  else setFiltroDiaFim(Math.min(31, Math.max(1, v)));
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Company list */}
