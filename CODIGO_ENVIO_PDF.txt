@@ -1,0 +1,146 @@
+﻿================================================================================
+CÃ“DIGO ENVOLVIDO NO ENVIO DE PDF - backend/cora-proxy/index.js
+Gerado em: 2026-02-23 14:57
+================================================================================
+
+
+--- 1. FUNÃ‡ÃƒO sendWhatsappPdf (envio do PDF para Wascript) ---
+
+
+async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConfig) {
+  const { apiUrl, token } = wascriptConfig;
+  if (!apiUrl || !token) throw new Error('Wascript API URL ou token nÃ£o configurado');
+
+  let cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.length <= 11 && !cleanPhone.startsWith('55')) {
+    cleanPhone = '55' + cleanPhone;
+  }
+
+  const base64 = pdfBuffer.toString('base64');
+
+  // Wascript API: token na URL. Endpoint correto: /api/enviar-documento/{token}. Body usa "name", nÃ£o "filename".
+  const response = await fetch(`${apiUrl}/api/enviar-documento/${token}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      phone: cleanPhone,
+      base64: `data:application/pdf;base64,${base64}`,
+      name: filename || 'boleto.pdf',
+    }),
+  });
+
+  const responseText2 = await response.text();
+  let data;
+  try {
+    data = responseText2 ? JSON.parse(responseText2) : {};
+  } catch {
+    console.error(`[Wascript sendFile] Resposta nÃ£o-JSON (status ${response.status}):`, responseText2.slice(0, 500));
+    throw new Error(`Wascript retornou status ${response.status} com resposta nÃ£o-JSON: ${responseText2.slice(0, 200)}`);
+  }
+  if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+  return data;
+}
+
+// â”€â”€ Send reminder (text only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res) => {
+
+--- 2. FLUXO process-boleto-complete (download PDF Cora + envio) ---
+
+
+// â”€â”€ Process boleto complete (PDF + message) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async (req, res) => {
+  try {
+    const { empresa, competencia, invoiceId, mensagem, wascriptApiUrl, wascriptToken } = req.body;
+    const wascriptConfig = getWascriptConfig({ wascriptApiUrl, wascriptToken });
+    const phone = empresa?.telefone;
+    if (!phone || phone.replace(/\D/g, '').length < 10) {
+      return res.status(400).json({ success: false, error: 'Telefone invÃ¡lido' });
+    }
+
+    let pdfSent = false;
+
+    // Try to download and send PDF if we have invoiceId and token
+    if (invoiceId) {
+      try {
+        // Get a fresh token for PDF download
+        const clientId = process.env.CORA_CLIENT_ID;
+        const certs = loadCertificates();
+        if (clientId && certs) {
+          const tokenUrl = 'https://matls-clients.api.cora.com.br/token';
+          const tokenBody = new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_id: clientId,
+          });
+
+          const tokenResponse = await new Promise((resolve, reject) => {
+            const urlObj = new URL(tokenUrl);
+            const options = {
+              hostname: urlObj.hostname,
+              path: urlObj.pathname,
+              method: 'POST',
+              cert: certs.cert,
+              key: certs.key,
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(tokenBody.toString()),
+              },
+            };
+            const request = https.request(options, (resp) => {
+              let data = '';
+              resp.on('data', (chunk) => (data += chunk));
+              resp.on('end', () => resolve({ status: resp.statusCode, body: data }));
+            });
+            request.on('error', reject);
+            request.write(tokenBody.toString());
+            request.end();
+          });
+
+          const tokenParsed = JSON.parse(tokenResponse.body);
+          if (tokenResponse.status === 200 && tokenParsed.access_token) {
+            const pdfUrl = `https://matls-clients.api.cora.com.br/v2/invoices/${invoiceId}/document`;
+            const pdfBuffer = await new Promise((resolve, reject) => {
+              const u = new URL(pdfUrl);
+              const opts = {
+                hostname: u.hostname, path: u.pathname, method: 'GET',
+                cert: certs.cert, key: certs.key,
+                headers: { 'Authorization': `Bearer ${tokenParsed.access_token}` },
+              };
+              const r = https.request(opts, (resp) => {
+                const chunks = [];
+                resp.on('data', (c) => chunks.push(c));
+                resp.on('end', () => resp.statusCode === 200 ? resolve(Buffer.concat(chunks)) : resolve(null));
+              });
+              r.on('error', () => resolve(null));
+              r.end();
+            });
+            if (pdfBuffer) {
+              const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
+              const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
+              await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
+              pdfSent = true;
+              await new Promise(r => setTimeout(r, 1500));
+            }
+          }
+        }
+      } catch (pdfErr) {
+        console.error('Erro ao enviar PDF:', pdfErr.message);
+        // Continue to send text message even if PDF fails
+      }
+    }
+
+    // Send text message
+    if (mensagem) {
+      await sendWhatsappMessage(phone, mensagem, wascriptConfig);
+    }
+
+    res.json({ success: true, pdfSent, messageSent: !!mensagem });
+  } catch (error) {
+    console.error('Erro process-boleto-complete:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3001;

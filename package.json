@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "backup": "node scripts/backup-supabase.js"
+    "backup": "node scripts/backup-supabase.js",
+    "backup:scheduler": "node scripts/backup-scheduler.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -56,6 +57,7 @@
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "node-cron": "^3.0.3",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",

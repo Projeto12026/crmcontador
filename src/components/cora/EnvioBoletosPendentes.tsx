@@ -291,6 +291,23 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       if (!empresa) continue;
 
       try {
+        // Garante que existe boleto vinculado quando o tipo selecionado exige PDF + mensagem.
+        if (!empresa.boleto || !empresa.boleto.cora_invoice_id) {
+          const msg = 'Boleto não encontrado/emitido para esta competência.';
+          erros++;
+          resultados.push({
+            success: false,
+            empresaId,
+            empresa: empresa.client_name || empresa.cnpj,
+            error: msg,
+            cnpj: empresa.cnpj,
+            status: empresa.boletoStatus,
+            etapa: 'boleto',
+          });
+          await logEnvio(empresaId, null, 'WHATSAPP', false, msg);
+          continue;
+        }
+
         const tel = empresa.telefone?.trim();
         if (!tel || tel.length < 10) {
           throw new Error(`Telefone inválido ou ausente para ${empresa.client_name || empresa.cnpj}. Cadastre um telefone com pelo menos 10 dígitos.`);

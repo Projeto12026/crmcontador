@@ -45,7 +45,26 @@ Get-Content .env | ForEach-Object { if ($_ -match '^([^#][^=]+)=(.*)$') { [Envir
 node scripts/backup-supabase.js
 ```
 
-## Agendar backup diário na VPS (cron)
+## Cron Job no código (agendador em Node)
+
+Você pode deixar o agendamento **dentro do projeto**, sem depender do cron do SO ou do EasyPanel:
+
+1. Instale a dependência: `npm install`
+2. Suba o agendador e mantenha o processo rodando (ex.: como serviço na VPS):
+
+```bash
+npm run backup:scheduler
+```
+
+Esse processo fica em execução e roda o backup **todo dia às 3h (horário de Brasília)**. O horário pode ser alterado com a variável **BACKUP_CRON_SCHEDULE** (formato cron: `minuto hora dia mês dia-semana`). Ex.: `BACKUP_CRON_SCHEDULE="0 4 * * *"` para 4h.
+
+Para rodar um backup logo ao iniciar o agendador (útil para testar), defina **BACKUP_RUN_ON_START=1**.
+
+No **EasyPanel**: crie um serviço que execute `npm run backup:scheduler` (ou `node scripts/backup-scheduler.js`) com as variáveis de ambiente do Supabase e deixe o serviço sempre ligado. Assim o Cron Job fica no código e não precisa configurar cron no painel.
+
+---
+
+## Agendar backup diário na VPS (cron do sistema)
 
 1. Coloque as variáveis de ambiente em um arquivo (ex.: `~/backup.env` ou no `.env` do projeto na VPS).
 2. Agende o script para rodar todo dia (ex.: 3h da manhã):
