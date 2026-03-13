@@ -11,7 +11,7 @@ import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportI
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
-import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
+import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction, useBulkUpdateCashFlowTransactions } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
 import { useContracts } from '@/hooks/useContracts';
 import { useQuery } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/C
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
+import { BulkEditTransactionsDialog } from '@/components/financial/BulkEditTransactionsDialog';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary } from '@/types/crm';
 
 import { NesconSummaryCards, NesconDashboardView, NesconProjectionView } from '@/components/financial/NesconCashFlowView';
@@ -35,6 +36,8 @@ export function FinancialNesconPage() {
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>('income');
   const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   // Category dialog state
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -235,6 +238,44 @@ export function FinancialNesconPage() {
   const createCategory = useCreateAccountCategory();
   const updateCategory = useUpdateAccountCategory();
   const deleteCategory = useDeleteAccountCategory();
+
+  const bulkUpdate = useBulkUpdateCashFlowTransactions();
+
+  const handleToggleSelect = (id: string, selected: boolean) => {
+    setSelectedTransactionIds(prev => {
+      const next = new Set(prev);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedTransactionIds(new Set(filteredTransactions.map(tx => tx.id)));
+    } else {
+      setSelectedTransactionIds(new Set());
+    }
+  };
+
+  const handleOpenBulkEdit = () => {
+    if (selectedTransactionIds.size === 0) return;
+    setBulkEditOpen(true);
+  };
+
+  const handleConfirmBulkEdit = (changes: {
+    date?: string;
+    account_id?: string;
+    value?: number;
+    origin_destination?: string;
+    description?: string;
+    status?: 'projected' | 'executed' | 'mixed';
+  }) => {
+    const ids = Array.from(selectedTransactionIds);
+    bulkUpdate.mutate({ ids, changes });
+    setBulkEditOpen(false);
+    setSelectedTransactionIds(new Set());
+  };
 
   const openNewTransaction = (type: TransactionType) => {
     setEditingTransaction(null);
@@ -503,6 +544,20 @@ export function FinancialNesconPage() {
               })()}
             />
           )}
+          {selectedTransactionIds.size > 0 && (
+            <div className="flex items-center justify-between mb-2 text-sm">
+              <span className="text-muted-foreground">
+                {selectedTransactionIds.size} lançamento(s) selecionado(s)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenBulkEdit}
+              >
+                Editar em lote
+              </Button>
+            </div>
+          )}
           <TransactionsTable
             transactions={filteredTransactions}
             isLoading={loadingTransactions}
@@ -510,6 +565,10 @@ export function FinancialNesconPage() {
             onDelete={(id) => deleteTransaction.mutate(id)}
             onEdit={openEditTransaction}
             showExport
+            selectable
+            selectedIds={selectedTransactionIds}
+            onToggleSelect={handleToggleSelect}
+            onToggleSelectAll={handleToggleSelectAll}
           />
         </TabsContent>
 
@@ -636,6 +695,14 @@ export function FinancialNesconPage() {
           financialAccounts={financialAccounts || []}
           clients={clients}
           editingTransaction={editingTransaction}
+        />
+
+        <BulkEditTransactionsDialog
+          open={bulkEditOpen}
+          onOpenChange={setBulkEditOpen}
+          count={selectedTransactionIds.size}
+          onConfirm={handleConfirmBulkEdit}
+          accounts={categoriesFlat || []}
         />
 
         {/* Category dialog */}

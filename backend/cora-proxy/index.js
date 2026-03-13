@@ -718,8 +718,8 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
       const t = templatesList.find((x) => x.template_key === templateKey);
       if (!t) return '';
       const nome = empresa.client_name || 'Cliente';
-      const amount = (boleto && boleto.total_amount_cents) ? boleto.total_amount_cents / 100 : (empresa.valor_mensal || 0);
-      const valor = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(Number(amount));
+      // Valor do boleto não será mais exposto na mensagem de WhatsApp
+      const valor = '';
       const dueDate = boleto?.due_date ? parseLocalDate(boleto.due_date) : null;
       const vencimento = dueDate ? dueDate.toLocaleDateString('pt-BR') : competencia;
       let diasAtraso = 0;
@@ -727,12 +727,14 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         const due = parseLocalDate(boleto.due_date);
         if (due) diasAtraso = Math.max(0, Math.ceil((today.getTime() - due.getTime()) / 86400000));
       }
-      return t.message_body
+      const base = t.message_body
         .replace(/\{\{nome\}\}/g, nome)
         .replace(/\{\{competencia\}\}/g, competencia)
         .replace(/\{\{vencimento\}\}/g, vencimento)
         .replace(/\{\{valor\}\}/g, valor)
         .replace(/\{\{dias_atraso\}\}/g, String(diasAtraso));
+      const assinatura = 'Contamos com o seu pagamento pontual como de costume.';
+      return `${base}${base.trim().length ? '\n\n' : ''}${assinatura}`;
     }
 
     const TIPOS = { AVISO_5_ANTES: { templateKey: 'before_due', pdf: true }, LEMBRETE_DIA: { templateKey: 'reminder_today', pdf: false }, AVISO_2_ATRASO: { templateKey: 'after_due', pdf: true }, AVISO_5_ATRASO: { templateKey: 'after_due', pdf: true } };

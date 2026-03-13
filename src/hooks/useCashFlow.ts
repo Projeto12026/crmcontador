@@ -411,3 +411,128 @@ export function useUpdateCashFlowTransaction() {
     },
   });
 }
+
+// Atualização em lote de lançamentos
+export function useBulkUpdateCashFlowTransactions() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ ids, changes }: { ids: string[]; changes: { 
+      date?: string;
+      account_id?: string;
+      value?: number;
+      origin_destination?: string;
+      description?: string;
+      status?: 'projected' | 'executed' | 'mixed';
+    } }) => {
+      if (!ids.length) return [];
+
+      const { data: existing, error: fetchError } = await supabase
+        .from('cash_flow_transactions')
+        .select('*')
+        .in('id', ids);
+
+      if (fetchError) throw fetchError;
+
+      const updates = (existing || []).map((tx: any) => {
+        const updateData: Record<string, unknown> = {};
+
+        if (changes.date) updateData.date = changes.date;
+        if (changes.account_id) updateData.account_id = changes.account_id;
+        if (changes.origin_destination !== undefined) updateData.origin_destination = changes.origin_destination;
+        if (changes.description !== undefined) updateData.description = changes.description;
+
+        const value = changes.value ?? tx.value;
+        const type: TransactionType = tx.type;
+
+        if (changes.status) {
+          if (changes.status === 'projected') {
+            if (type === 'income') {
+              updateData.future_income = value;
+              updateData.future_expense = 0;
+              updateData.income = 0;
+              updateData.expense = 0;
+            } else {
+              updateData.future_expense = value;
+              updateData.future_income = 0;
+              updateData.income = 0;
+              updateData.expense = 0;
+            }
+          } else if (changes.status === 'executed') {
+            if (type === 'income') {
+              updateData.income = value;
+              updateData.expense = 0;
+              updateData.future_income = 0;
+              updateData.future_expense = 0;
+            } else {
+              updateData.expense = value;
+              updateData.income = 0;
+              updateData.future_income = 0;
+              updateData.future_expense = 0;
+            }
+          } else if (changes.status === 'mixed') {
+            // Parcial: metade projetado, metade realizado, apenas como aproximação simples
+            const half = Number(value || tx.value || 0) / 2;
+            if (type === 'income') {
+              updateData.income = half;
+              updateData.future_income = half;
+              updateData.expense = 0;
+              updateData.future_expense = 0;
+            } else {
+              updateData.expense = half;
+              updateData.future_expense = half;
+              updateData.income = 0;
+              updateData.future_income = 0;
+            }
+          }
+          updateData.value = value;
+        } else if (changes.value !== undefined) {
+          // Apenas valor: mantém distribuição atual entre projetado/realizado proporcionalmente simples
+          if (type === 'income') {
+            const hasFuture = Number(tx.future_income || 0) > 0;
+            const hasExecuted = Number(tx.income || 0) > 0;
+            if (hasFuture && !hasExecuted) {
+              updateData.future_income = value;
+            } else if (hasExecuted && !hasFuture) {
+              updateData.income = value;
+            } else {
+              updateData.income = value;
+            }
+          } else {
+            const hasFuture = Number(tx.future_expense || 0) > 0;
+            const hasExecuted = Number(tx.expense || 0) > 0;
+            if (hasFuture && !hasExecuted) {
+              updateData.future_expense = value;
+            } else if (hasExecuted && !hasFuture) {
+              updateData.expense = value;
+            } else {
+              updateData.expense = value;
+            }
+          }
+          updateData.value = value;
+        }
+
+        return { id: tx.id as string, updateData };
+      });
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .upsert(updates.map(u => ({ id: u.id, ...u.updateData })))
+        .select();
+
+      if (error) throw error;
+      return result as CashFlowTransaction[];
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Lançamentos atualizados!' });
+    },
+    onError: (error) => {
+      toast({ title: 'Erro na atualização em lote', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+

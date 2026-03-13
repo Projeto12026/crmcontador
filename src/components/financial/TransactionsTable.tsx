@@ -2,6 +2,7 @@ import { CashFlowTransaction } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -21,6 +22,10 @@ interface TransactionsTableProps {
   onDelete?: (id: string) => void;
   onEdit?: (transaction: CashFlowTransaction) => void;
   showExport?: boolean;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string, selected: boolean) => void;
+  onToggleSelectAll?: (selected: boolean) => void;
 }
 
 const formatCurrency = (value: number) =>
@@ -68,6 +73,10 @@ export function TransactionsTable({
   onDelete,
   onEdit,
   showExport = false,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
 }: TransactionsTableProps) {
   if (isLoading) {
     return (
@@ -100,6 +109,21 @@ export function TransactionsTable({
         <Table>
           <TableHeader>
             <TableRow>
+              {selectable && (
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={
+                      selectedIds && selectedIds.size > 0 && selectedIds.size === transactions.length
+                    }
+                    indeterminate={
+                      !!selectedIds &&
+                      selectedIds.size > 0 &&
+                      selectedIds.size < transactions.length
+                    }
+                    onCheckedChange={(checked) => onToggleSelectAll?.(!!checked)}
+                  />
+                </TableHead>
+              )}
               <TableHead>Data</TableHead>
               <TableHead>Conta</TableHead>
               <TableHead>Descrição</TableHead>
@@ -123,6 +147,15 @@ export function TransactionsTable({
                   className="cursor-pointer"
                   onDoubleClick={() => onEdit?.(tx)}
                 >
+                  {selectable && (
+                    <TableCell className="w-[40px]">
+                      <Checkbox
+                        checked={selectedIds?.has(tx.id)}
+                        onCheckedChange={(checked) => onToggleSelect?.(tx.id, !!checked)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     {format(parseISO(tx.date), "dd/MM/yyyy", { locale: ptBR })}
                   </TableCell>

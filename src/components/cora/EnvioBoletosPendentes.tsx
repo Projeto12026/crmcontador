@@ -168,10 +168,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
     const template = templates?.find(t => t.template_key === templateKey && t.is_active);
     if (!template) return '';
     const nome = empresa.client_name || empresa.client?.name || 'Cliente';
-    const amount = empresa.boleto?.total_amount_cents
-      ? empresa.boleto.total_amount_cents / 100
-      : empresa.valor_mensal || 0;
-    const valor = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(amount);
+    // Valor do boleto não será mais exposto na mensagem de WhatsApp
+    const valor = '';
     const dueDate = empresa.boleto?.due_date
       ? parseLocalDate(empresa.boleto.due_date)
       : gerarDataVencimento(empresa.dia_vencimento, competenciaMes, competenciaAno);
@@ -180,12 +178,15 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       : `${String(empresa.dia_vencimento).padStart(2, '0')}/${String(competenciaMes).padStart(2, '0')}/${competenciaAno}`;
     const dias = getDiasAtraso(empresa);
 
-    return template.message_body
+    const base = template.message_body
       .replace(/\{\{nome\}\}/g, nome)
       .replace(/\{\{competencia\}\}/g, competencia)
       .replace(/\{\{vencimento\}\}/g, vencimento)
       .replace(/\{\{valor\}\}/g, valor)
       .replace(/\{\{dias_atraso\}\}/g, dias != null ? String(dias) : '0');
+    const assinatura = 'Contamos com o seu pagamento pontual como de costume.';
+    // Garante quebra de linha apenas se o template não terminar vazio
+    return `${base}${base.trim().length ? '\n\n' : ''}${assinatura}`;
   }, [templates, competencia, competenciaMes, competenciaAno]);
 
   // Pipeline: filter empresas

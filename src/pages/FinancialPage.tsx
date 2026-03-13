@@ -11,7 +11,7 @@ import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportI
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
-import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
+import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction, useBulkUpdateCashFlowTransactions } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
 
 import { AccountCategoryTree } from '@/components/financial/AccountCategoryTree';
@@ -26,6 +26,7 @@ import { FinancialDashboardView } from '@/components/financial/FinancialDashboar
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
+import { BulkEditTransactionsDialog } from '@/components/financial/BulkEditTransactionsDialog';
 import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, ACCOUNT_GROUPS, CashFlowTransaction } from '@/types/crm';
 
 export function FinancialPage() {
@@ -33,6 +34,8 @@ export function FinancialPage() {
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>('income');
   const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   
   // Estado para dialog de categoria
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -222,6 +225,44 @@ export function FinancialPage() {
       });
     }
   };
+
+  const bulkUpdate = useBulkUpdateCashFlowTransactions();
+
+  const handleToggleSelect = (id: string, selected: boolean) => {
+    setSelectedTransactionIds(prev => {
+      const next = new Set(prev);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedTransactionIds(new Set(filteredTransactions.map(tx => tx.id)));
+    } else {
+      setSelectedTransactionIds(new Set());
+    }
+  };
+
+  const handleOpenBulkEdit = () => {
+    if (selectedTransactionIds.size === 0) return;
+    setBulkEditOpen(true);
+  };
+
+  const handleConfirmBulkEdit = (changes: {
+    date?: string;
+    account_id?: string;
+    value?: number;
+    origin_destination?: string;
+    description?: string;
+    status?: 'projected' | 'executed' | 'mixed';
+  }) => {
+    const ids = Array.from(selectedTransactionIds);
+    bulkUpdate.mutate({ ids, changes });
+    setBulkEditOpen(false);
+    setSelectedTransactionIds(new Set());
+  };
   
   const confirmDeleteCategory = () => {
     if (categoryToDelete) {
@@ -410,6 +451,20 @@ export function FinancialPage() {
           {summary && (
             <CashFlowSummaryCards summary={summary} isLoading={loadingSummary} totalProjectedExpense={grandTotalProjectedExpense} />
           )}
+          {selectedTransactionIds.size > 0 && (
+            <div className="flex items-center justify-between mb-2 text-sm">
+              <span className="text-muted-foreground">
+                {selectedTransactionIds.size} lançamento(s) selecionado(s)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenBulkEdit}
+              >
+                Editar em lote
+              </Button>
+            </div>
+          )}
           <TransactionsTable
             transactions={filteredTransactions}
             isLoading={loadingTransactions}
@@ -417,6 +472,10 @@ export function FinancialPage() {
             onDelete={(id) => deleteTransaction.mutate(id)}
             onEdit={openEditTransaction}
             showExport
+            selectable
+            selectedIds={selectedTransactionIds}
+            onToggleSelect={handleToggleSelect}
+            onToggleSelectAll={handleToggleSelectAll}
           />
         </TabsContent>
 
@@ -553,6 +612,14 @@ export function FinancialPage() {
         financialAccounts={financialAccounts || []}
         clients={clients}
         editingTransaction={editingTransaction}
+      />
+
+      <BulkEditTransactionsDialog
+        open={bulkEditOpen}
+        onOpenChange={setBulkEditOpen}
+        count={selectedTransactionIds.size}
+        onConfirm={handleConfirmBulkEdit}
+        accounts={categoriesFlat || []}
       />
       
       {/* Dialog de conta */}
