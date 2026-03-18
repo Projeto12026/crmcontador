@@ -113,12 +113,11 @@ export function TransactionsTable({
                 <TableHead className="w-[40px]">
                   <Checkbox
                     checked={
-                      selectedIds && selectedIds.size > 0 && selectedIds.size === transactions.length
-                    }
-                    indeterminate={
-                      !!selectedIds &&
-                      selectedIds.size > 0 &&
-                      selectedIds.size < transactions.length
+                      selectedIds && selectedIds.size > 0
+                        ? selectedIds.size === transactions.length
+                          ? true
+                          : "indeterminate"
+                        : false
                     }
                     onCheckedChange={(checked) => onToggleSelectAll?.(!!checked)}
                   />
