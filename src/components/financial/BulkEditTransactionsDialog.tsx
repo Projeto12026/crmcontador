@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -75,12 +75,12 @@ export function BulkEditTransactionsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edição em lote ({count} lançamento(s))</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Marque apenas os campos que deseja alterar. As mudanças serão aplicadas a todos os lançamentos selecionados.
-          </p>
+        <DialogTitle>Edição em lote ({count} lançamento(s))</DialogTitle>
+        <DialogDescription>
+          Marque apenas os campos que deseja alterar. As mudanças serão aplicadas a todos os lançamentos selecionados.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4">
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex items-start gap-2">

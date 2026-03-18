@@ -436,9 +436,14 @@ export function useBulkUpdateCashFlowTransactions() {
       if (fetchError) throw fetchError;
 
       const updates = (existing || []).map((tx: any) => {
-        const updateData: Record<string, unknown> = {};
+        // Segurança: `cash_flow_transactions.date` é `NOT NULL`.
+        // Mesmo quando o usuário não marca "Data", garantimos que o UPDATE sempre
+        // leve a data original da transação (evita `date` chegando como `NULL`).
+        const updateData: Record<string, unknown> = { date: tx.date };
 
-        if (changes.date) updateData.date = changes.date;
+        if (Object.prototype.hasOwnProperty.call(changes, 'date') && changes.date) {
+          updateData.date = changes.date;
+        }
         if (changes.account_id) updateData.account_id = changes.account_id;
         if (changes.origin_destination !== undefined) updateData.origin_destination = changes.origin_destination;
         if (changes.description !== undefined) updateData.description = changes.description;
@@ -516,13 +521,25 @@ export function useBulkUpdateCashFlowTransactions() {
         return { id: tx.id as string, updateData };
       });
 
-      const { data: result, error } = await supabase
-        .from('cash_flow_transactions')
-        .upsert(updates.map(u => ({ id: u.id, ...u.updateData })))
-        .select();
+      const results: CashFlowTransaction[] = [];
 
-      if (error) throw error;
-      return result as CashFlowTransaction[];
+      for (const u of updates) {
+        if (!u.updateData || Object.keys(u.updateData).length === 0) {
+          continue;
+        }
+
+        const { data, error } = await supabase
+          .from('cash_flow_transactions')
+          .update(u.updateData)
+          .eq('id', u.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (data) results.push(data as CashFlowTransaction);
+      }
+
+      return results;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
