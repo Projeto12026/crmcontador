@@ -1,0 +1,22 @@
+# POC: PostgreSQL isolado para testar restore de dump (não usar em produção sem hardening).
+# Uso: a partir desta pasta: docker compose up -d
+services:
+  postgres-poc:
+    image: postgres:16-alpine
+    container_name: crmcontador-postgres-poc
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc_local_only_change_me
+      POSTGRES_DB: crm_poc
+    ports:
+      - "5433:5432"
+    volumes:
+      - crm_poc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d crm_poc"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  crm_poc_pgdata:

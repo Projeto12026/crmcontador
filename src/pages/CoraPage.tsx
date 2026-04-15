@@ -14,6 +14,7 @@ import {
   CoraEmpresa,
   CoraEmpresaFormData,
   CoraBoleto,
+  getBoletoEffectiveStatus,
 } from '@/hooks/useCora';
 import { useClients } from '@/hooks/useClients';
 import { Button } from '@/components/ui/button';
@@ -75,17 +76,46 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Rea
   UNKNOWN: { label: 'Não Consultado', color: 'bg-muted text-muted-foreground border-border', icon: <HelpCircle className="h-4 w-4" /> },
 };
 
+/** Ordem de exibição quando há vários boletos no mesmo CNPJ/competência (ex.: cancelou e emitiu outro). */
+function boletoStatusRank(status: string): number {
+  const s = (status || '').toUpperCase();
+  if (s === 'PAID') return 0;
+  if (s === 'OPEN') return 1;
+  if (s === 'LATE' || s === 'OVERDUE') return 2;
+  if (s === 'DRAFT' || s === 'RECURRENCE_DRAFT') return 3;
+  if (s === 'CANCELLED') return 10;
+  return 5;
+}
+
+function pickRepresentativeBoleto(matched: CoraBoleto[]): CoraBoleto {
+  const nonCancelled = matched.filter(b => getBoletoEffectiveStatus(b) !== 'CANCELLED');
+  const pool = nonCancelled.length > 0 ? nonCancelled : matched;
+
+  return [...pool].sort((a, b) => {
+    const ra = boletoStatusRank(getBoletoEffectiveStatus(a));
+    const rb = boletoStatusRank(getBoletoEffectiveStatus(b));
+    if (ra !== rb) return ra - rb;
+    const bySync = (b.synced_at || '').localeCompare(a.synced_at || '');
+    if (bySync !== 0) return bySync;
+    const byCreated = (b.created_at || '').localeCompare(a.created_at || '');
+    if (byCreated !== 0) return byCreated;
+    return (b.due_date || '').localeCompare(a.due_date || '');
+  })[0];
+}
+
 function getEmpresaStatus(empresa: CoraEmpresa, boletos: CoraBoleto[]): { status: BoletoStatus; boleto: CoraBoleto | null } {
   const cnpjClean = empresa.cnpj.replace(/\D/g, '');
-  const matched = boletos.filter(b => b.cnpj.replace(/\D/g, '') === cnpjClean);
+  // Mesmo CNPJ da empresa OU vínculo direto (evita perder boleto novo com empresa_id divergente)
+  const matched = boletos.filter(
+    b => b.cnpj.replace(/\D/g, '') === cnpjClean || b.empresa_id === empresa.id,
+  );
   if (!matched.length) return { status: 'UNKNOWN', boleto: null };
-  // Prefer non-cancelled, most recent
-  const sorted = [...matched].sort((a, b) => (b.due_date || '').localeCompare(a.due_date || ''));
-  const boleto = sorted[0];
-  const s = (boleto.status || '').toUpperCase();
+
+  const boleto = pickRepresentativeBoleto(matched);
+  const s = getBoletoEffectiveStatus(boleto);
   if (s === 'PAID') return { status: 'PAID', boleto };
   if (s === 'OPEN') return { status: 'OPEN', boleto };
-  if (s === 'LATE') return { status: 'LATE', boleto };
+  if (s === 'LATE' || s === 'OVERDUE') return { status: 'LATE', boleto };
   if (s === 'CANCELLED') return { status: 'CANCELLED', boleto };
   if (s === 'DRAFT' || s === 'RECURRENCE_DRAFT') return { status: 'DRAFT', boleto };
   return { status: 'UNKNOWN', boleto };

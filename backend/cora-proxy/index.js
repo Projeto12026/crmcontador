@@ -317,7 +317,7 @@ function isTransientWascriptError(err) {
 // Executa uma chamada Wascript com até 3 tentativas quando o erro for de sessão/token
 async function withWascriptRetry(fn, context = '') {
   const maxAttempts = 3;
-  const delayMs = 4000;
+  const delayMs = 5000;
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -408,6 +408,566 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
     return data;
   }, ' sendFile');
 }
+
+const GCLICK_API_URL = process.env.GCLICK_API_URL || 'https://api.gclick.com.br';
+const DEFAULT_GCLICK_PATTERNS = {
+  INSS: ['inss', 'gps', 'previdencia'],
+  FGTS: ['fgts', 'sefip', 'grf'],
+};
+let gclickCycleRunning = false;
+let gclickCycleSchedulerInitialized = false;
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) return null;
+  return createClient(supabaseUrl, supabaseKey);
+}
+
+function sanitizeDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function parseDateLike(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const d = new Date(str);
+  if (!Number.isNaN(d.getTime())) return d;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  return null;
+}
+
+function inferCompetencia(task) {
+  const dates = [task?.dataCompetencia, task?.dataAcao, task?.dataMeta, task?.dataVencimento];
+  for (const candidate of dates) {
+    const d = parseDateLike(candidate);
+    if (d) return { mes: d.getMonth() + 1, ano: d.getFullYear() };
+  }
+  return null;
+}
+
+function normalizePatterns(patternsRaw) {
+  const source = patternsRaw && typeof patternsRaw === 'object' ? patternsRaw : {};
+  const inss = Array.isArray(source.INSS) ? source.INSS : DEFAULT_GCLICK_PATTERNS.INSS;
+  const fgts = Array.isArray(source.FGTS) ? source.FGTS : DEFAULT_GCLICK_PATTERNS.FGTS;
+  return {
+    INSS: inss.map((v) => String(v).trim().toLowerCase()).filter(Boolean),
+    FGTS: fgts.map((v) => String(v).trim().toLowerCase()).filter(Boolean),
+  };
+}
+
+function detectGuideType(task, activity, file, patterns) {
+  const haystack = [
+    task?.nome,
+    task?.obrigacao?.nome,
+    task?.departamento?.nome,
+    activity?.nome,
+    activity?.descricao,
+    file?.nome,
+    file?.url,
+  ]
+    .filter(Boolean)
+    .map((v) => String(v).toLowerCase())
+    .join(' ');
+
+  if (!haystack.trim()) return null;
+  const hasInss = patterns.INSS.some((p) => haystack.includes(p));
+  const hasFgts = patterns.FGTS.some((p) => haystack.includes(p));
+
+  if (hasInss && !hasFgts) return 'INSS';
+  if (hasFgts && !hasInss) return 'FGTS';
+  if (hasInss && hasFgts) {
+    const inssPos = Math.min(...patterns.INSS.map((p) => (haystack.includes(p) ? haystack.indexOf(p) : Number.MAX_SAFE_INTEGER)));
+    const fgtsPos = Math.min(...patterns.FGTS.map((p) => (haystack.includes(p) ? haystack.indexOf(p) : Number.MAX_SAFE_INTEGER)));
+    return inssPos <= fgtsPos ? 'INSS' : 'FGTS';
+  }
+  return null;
+}
+
+function extractActivityFiles(activity) {
+  const candidates = [activity?.arquivos, activity?.files, activity?.anexos, activity?.documentos];
+  for (const arr of candidates) {
+    if (!Array.isArray(arr)) continue;
+    return arr
+      .map((item) => ({
+        nome: item?.nome || item?.name || item?.filename || null,
+        url: item?.url || item?.link || item?.downloadUrl || null,
+      }))
+      .filter((f) => f.url);
+  }
+  return [];
+}
+
+async function loadGclickCredentials(supabase) {
+  let appKey = process.env.GCLICK_APP_KEY || '';
+  let appSecret = process.env.GCLICK_APP_SECRET || '';
+  if (appKey && appSecret) return { appKey, appSecret };
+
+  if (!supabase) throw new Error('Credenciais GClick não configuradas no ambiente.');
+
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'gclick_credentials')
+    .maybeSingle();
+  if (error) throw error;
+
+  appKey = data?.value?.app_key || appKey;
+  appSecret = data?.value?.app_secret || appSecret;
+
+  if (!appKey || !appSecret) {
+    throw new Error('Credenciais GClick não configuradas. Defina GCLICK_APP_KEY/GCLICK_APP_SECRET ou settings.gclick_credentials.');
+  }
+  return { appKey, appSecret };
+}
+
+async function getGclickAccessToken(appKey, appSecret) {
+  const response = await fetch(`${GCLICK_API_URL}/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: appKey,
+      client_secret: appSecret,
+      grant_type: 'client_credentials',
+    }),
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+  if (!response.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || `Falha na autenticação GClick (${response.status})`);
+  }
+  return data.access_token;
+}
+
+async function gclickFetchJson(token, pathWithQuery) {
+  const response = await fetch(`${GCLICK_API_URL}${pathWithQuery}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `GClick HTTP ${response.status} em ${pathWithQuery}`);
+  }
+  return data;
+}
+
+async function fetchGclickTasks(token, competenciaMes, competenciaAno) {
+  const all = [];
+  let page = 0;
+  let last = false;
+
+  while (!last && page < 100) {
+    const params = new URLSearchParams({
+      categoria: 'Obrigacao',
+      size: '100',
+      page: String(page),
+    });
+    const data = await gclickFetchJson(token, `/tarefas?${params.toString()}`);
+    const content = Array.isArray(data.content) ? data.content : [];
+    all.push(...content);
+    last = Boolean(data.last);
+    page += 1;
+  }
+
+  return all.filter((task) => {
+    const comp = inferCompetencia(task);
+    return comp && comp.mes === competenciaMes && comp.ano === competenciaAno;
+  });
+}
+
+async function fetchTaskActivities(token, taskId) {
+  try {
+    const data = await gclickFetchJson(token, `/tarefas/${encodeURIComponent(taskId)}/atividades`);
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.content)) return data.content;
+    return [];
+  } catch (e) {
+    console.warn(`[gclick] Falha ao buscar atividades da tarefa ${taskId}:`, e.message);
+    return [];
+  }
+}
+
+async function loadGclickConfigForRun(supabase, forcedMes, forcedAno) {
+  const { data, error } = await supabase
+    .from('gclick_sync_config')
+    .select('*')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const now = new Date();
+  const cfg = data || {
+    is_enabled: false,
+    ask_send_confirmation_on_sync: false,
+    run_mode: 'sync_only',
+    interval_minutes: 5,
+    competencia_mes: now.getMonth() + 1,
+    competencia_ano: now.getFullYear(),
+    match_patterns: DEFAULT_GCLICK_PATTERNS,
+    last_run_at: null,
+  };
+
+  return {
+    ...cfg,
+    competencia_mes: forcedMes || cfg.competencia_mes || now.getMonth() + 1,
+    competencia_ano: forcedAno || cfg.competencia_ano || now.getFullYear(),
+    run_mode: cfg.run_mode || 'sync_only',
+    ask_send_confirmation_on_sync: Boolean(cfg.ask_send_confirmation_on_sync),
+    interval_minutes: Math.max(5, Number(cfg.interval_minutes || 5)),
+    match_patterns: normalizePatterns(cfg.match_patterns),
+  };
+}
+
+async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types = ['INSS', 'FGTS'], onlyEnabledClients = true }) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
+
+  const config = await loadGclickConfigForRun(supabase, competenciaMes, competenciaAno);
+  const enabledTypes = Array.isArray(types) && types.length ? types : ['INSS', 'FGTS'];
+  const matchPatterns = normalizePatterns(config.match_patterns);
+
+  let clientQuery = supabase.from('clients').select('id, name, document, phone, envia_via_gclick');
+  if (onlyEnabledClients) clientQuery = clientQuery.eq('envia_via_gclick', true);
+  const { data: clients, error: clientsError } = await clientQuery;
+  if (clientsError) throw clientsError;
+
+  const clientByDoc = new Map();
+  for (const c of clients || []) {
+    const doc = sanitizeDigits(c.document);
+    if (!doc) continue;
+    clientByDoc.set(doc, c);
+  }
+
+  const { appKey, appSecret } = await loadGclickCredentials(supabase);
+  const token = await getGclickAccessToken(appKey, appSecret);
+  const tasks = await fetchGclickTasks(token, config.competencia_mes, config.competencia_ano);
+
+  let found = 0;
+  let queued = 0;
+  let skipped = 0;
+  let errors = 0;
+  let alreadySent = 0;
+  const upserts = [];
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('gclick_guide_jobs')
+    .select('id, client_id, guide_type, competencia_mes, competencia_ano, arquivo_url, status, sent_at, attempts')
+    .eq('competencia_mes', config.competencia_mes)
+    .eq('competencia_ano', config.competencia_ano);
+  if (existingError) throw existingError;
+
+  const existingByKey = new Map();
+  for (const row of existingRows || []) {
+    const key = `${row.client_id}|${row.guide_type}|${row.competencia_mes}|${row.competencia_ano}|${row.arquivo_url}`;
+    existingByKey.set(key, row);
+  }
+
+  for (const task of tasks) {
+    const taskClientDoc = sanitizeDigits(task?.clienteInscricao);
+    const client = clientByDoc.get(taskClientDoc);
+    if (!client) {
+      skipped += 1;
+      continue;
+    }
+
+    const activities = await fetchTaskActivities(token, task.id);
+    if (!activities.length) {
+      skipped += 1;
+      continue;
+    }
+
+    for (const activity of activities) {
+      const files = extractActivityFiles(activity);
+      for (const file of files) {
+        const guideType = detectGuideType(task, activity, file, matchPatterns);
+        if (!guideType || !enabledTypes.includes(guideType)) continue;
+
+        found += 1;
+        const dedupKey = `${client.id}|${guideType}|${config.competencia_mes}|${config.competencia_ano}|${file.url}`;
+        const existing = existingByKey.get(dedupKey);
+        const isAlreadySent = existing?.status === 'SENT';
+        if (isAlreadySent) alreadySent += 1;
+
+        upserts.push({
+          client_id: client.id,
+          client_document: client.document || taskClientDoc,
+          guide_type: guideType,
+          competencia_mes: config.competencia_mes,
+          competencia_ano: config.competencia_ano,
+          task_id: String(task.id || ''),
+          atividade_id: activity?.id ? String(activity.id) : null,
+          arquivo_nome: file.nome || null,
+          arquivo_url: file.url,
+          status: isAlreadySent ? 'SENT' : 'FOUND',
+          sent_at: isAlreadySent ? existing?.sent_at || null : null,
+          attempts: Number(existing?.attempts || 0),
+          last_error: isAlreadySent ? null : null,
+        });
+      }
+    }
+  }
+
+  if (upserts.length) {
+    const { error: upsertError } = await supabase
+      .from('gclick_guide_jobs')
+      .upsert(upserts, {
+        onConflict: 'client_id,guide_type,competencia_mes,competencia_ano,arquivo_url',
+        ignoreDuplicates: false,
+      });
+    if (upsertError) {
+      errors += 1;
+      throw upsertError;
+    }
+    queued = upserts.length;
+  }
+
+  const pendingToSend = Math.max(0, found - alreadySent);
+  return { success: true, found, queued, skipped, errors, pendingToSend, alreadySent };
+}
+
+async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds = null, sendAll = false }) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
+
+  let query = supabase
+    .from('gclick_guide_jobs')
+    .select('id, client_id, client_document, guide_type, competencia_mes, competencia_ano, arquivo_nome, arquivo_url, status, attempts, clients(id, name, phone, envia_via_gclick)')
+    .eq('competencia_mes', competenciaMes)
+    .eq('competencia_ano', competenciaAno);
+
+  if (!sendAll && Array.isArray(jobIds) && jobIds.length) {
+    query = query.in('id', jobIds);
+  }
+
+  const { data: jobs, error: jobsError } = await query;
+  if (jobsError) throw jobsError;
+
+  const { data: cfgRows, error: cfgError } = await supabase
+    .from('cora_config')
+    .select('chave, valor')
+    .eq('chave', 'whatsapp')
+    .limit(1);
+  if (cfgError) throw cfgError;
+
+  const whatsappCfg = cfgRows?.[0]?.valor || {};
+  const wascriptConfig = getWascriptConfig({
+    wascriptApiUrl: whatsappCfg.api_url,
+    wascriptToken: whatsappCfg.token,
+  });
+
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  const details = [];
+  const formatCompetencia = (mes, ano) => `${String(mes).padStart(2, '0')}/${ano}`;
+  const buildDeliveryMessage = (job) => {
+    const tipo = job.guide_type === 'FGTS' ? 'FGTS' : 'INSS';
+    return `Olá, segue ${tipo} da competência ${formatCompetencia(job.competencia_mes, job.competencia_ano)}.`;
+  };
+
+  for (const job of jobs || []) {
+    if (job?.clients?.envia_via_gclick === false) {
+      skipped += 1;
+      await supabase
+        .from('gclick_guide_jobs')
+        .update({
+          status: 'SKIPPED',
+          last_error: 'Cliente desmarcado para envio via Gclick.',
+        })
+        .eq('id', job.id);
+      continue;
+    }
+
+    if (job.status === 'SENT') {
+      skipped += 1;
+      continue;
+    }
+    if (!['FOUND', 'FAILED', 'QUEUED'].includes(job.status || '')) {
+      skipped += 1;
+      continue;
+    }
+    const phone = job?.clients?.phone || '';
+    if (sanitizeDigits(phone).length < 10) {
+      failed += 1;
+      details.push({ jobId: job.id, error: 'Telefone do cliente inválido.' });
+      await supabase
+        .from('gclick_guide_jobs')
+        .update({ status: 'FAILED', attempts: (job.attempts || 0) + 1, last_error: 'Telefone do cliente inválido.' })
+        .eq('id', job.id);
+      continue;
+    }
+
+    try {
+      const pdfResp = await fetch(job.arquivo_url, { headers: { Accept: 'application/pdf' } });
+      if (!pdfResp.ok) {
+        throw new Error(`Falha no download (${pdfResp.status})`);
+      }
+      const arr = await pdfResp.arrayBuffer();
+      const buffer = Buffer.from(arr);
+      const filename = job.arquivo_nome || `${job.guide_type}_${String(job.competencia_mes).padStart(2, '0')}-${job.competencia_ano}.pdf`;
+      await sendWhatsappPdf(phone, buffer, filename, '', wascriptConfig);
+
+      // Envia mensagem curta de contexto após o documento.
+      // Se falhar, não rebaixa o envio para evitar reenvio duplicado do PDF.
+      try {
+        await sendWhatsappMessage(phone, buildDeliveryMessage(job), wascriptConfig);
+      } catch (messageError) {
+        details.push({
+          jobId: job.id,
+          warning: `PDF enviado, mas texto de entrega falhou: ${messageError.message || 'erro desconhecido'}`,
+        });
+      }
+
+      await supabase
+        .from('gclick_guide_jobs')
+        .update({
+          status: 'SENT',
+          attempts: (job.attempts || 0) + 1,
+          last_error: null,
+          sent_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+      sent += 1;
+      details.push({ jobId: job.id, status: 'sent' });
+    } catch (e) {
+      failed += 1;
+      details.push({ jobId: job.id, error: e.message || 'Erro desconhecido' });
+      await supabase
+        .from('gclick_guide_jobs')
+        .update({
+          status: 'FAILED',
+          attempts: (job.attempts || 0) + 1,
+          last_error: e.message || 'Erro desconhecido',
+        })
+        .eq('id', job.id);
+    }
+
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  return { success: true, sent, failed, skipped, details };
+}
+
+async function runGclickCycleInternal({ forceRun = false, competenciaMes, competenciaAno } = {}) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
+  if (gclickCycleRunning) return { success: true, skipped: true, reason: 'cycle_already_running' };
+
+  const cfg = await loadGclickConfigForRun(supabase, competenciaMes, competenciaAno);
+  if (!cfg.is_enabled && !forceRun) return { success: true, skipped: true, reason: 'disabled' };
+
+  if (!forceRun && cfg.last_run_at) {
+    const nextRunAt = new Date(cfg.last_run_at).getTime() + cfg.interval_minutes * 60_000;
+    if (Date.now() < nextRunAt) {
+      return { success: true, skipped: true, reason: 'interval_not_reached' };
+    }
+  }
+
+  gclickCycleRunning = true;
+  try {
+    const syncResult = await syncGclickGuidesInternal({
+      competenciaMes: cfg.competencia_mes,
+      competenciaAno: cfg.competencia_ano,
+      types: ['INSS', 'FGTS'],
+      onlyEnabledClients: true,
+    });
+
+    let sendResult = { success: true, sent: 0, failed: 0, skipped: 0, details: [] };
+    if (cfg.run_mode === 'sync_and_send') {
+      sendResult = await sendGclickGuidesInternal({
+        sendAll: true,
+        competenciaMes: cfg.competencia_mes,
+        competenciaAno: cfg.competencia_ano,
+      });
+    }
+
+    if (cfg.id) {
+      await supabase
+        .from('gclick_sync_config')
+        .update({
+          last_run_at: new Date().toISOString(),
+          last_run_error: null,
+        })
+        .eq('id', cfg.id);
+    }
+
+    return { success: true, sync: syncResult, send: sendResult };
+  } catch (e) {
+    if (cfg.id) {
+      await supabase
+        .from('gclick_sync_config')
+        .update({
+          last_run_at: new Date().toISOString(),
+          last_run_error: e.message || 'Erro desconhecido',
+        })
+        .eq('id', cfg.id);
+    }
+    throw e;
+  } finally {
+    gclickCycleRunning = false;
+  }
+}
+
+app.post('/api/gclick/sync-guides', async (req, res) => {
+  try {
+    const { competenciaMes, competenciaAno, types, onlyEnabledClients = true } = req.body || {};
+    if (!competenciaMes || !competenciaAno) {
+      return res.status(400).json({ error: 'competenciaMes e competenciaAno são obrigatórios.' });
+    }
+    const result = await syncGclickGuidesInternal({
+      competenciaMes: Number(competenciaMes),
+      competenciaAno: Number(competenciaAno),
+      types: Array.isArray(types) ? types : ['INSS', 'FGTS'],
+      onlyEnabledClients: Boolean(onlyEnabledClients),
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Erro gclick/sync-guides:', error);
+    res.status(500).json({ error: error.message || 'Erro interno ao sincronizar guias.' });
+  }
+});
+
+app.post('/api/gclick/send-guides', async (req, res) => {
+  try {
+    const { competenciaMes, competenciaAno, jobIds = [], sendAll = false } = req.body || {};
+    if (!competenciaMes || !competenciaAno) {
+      return res.status(400).json({ error: 'competenciaMes e competenciaAno são obrigatórios.' });
+    }
+    if (!sendAll && (!Array.isArray(jobIds) || !jobIds.length)) {
+      return res.status(400).json({ error: 'Informe jobIds ou use sendAll=true.' });
+    }
+    const result = await sendGclickGuidesInternal({
+      competenciaMes: Number(competenciaMes),
+      competenciaAno: Number(competenciaAno),
+      jobIds,
+      sendAll: Boolean(sendAll),
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Erro gclick/send-guides:', error);
+    res.status(500).json({ error: error.message || 'Erro interno ao enviar guias.' });
+  }
+});
+
+app.post('/api/gclick/run-cycle', async (req, res) => {
+  try {
+    const { competenciaMes, competenciaAno } = req.body || {};
+    const result = await runGclickCycleInternal({
+      forceRun: true,
+      competenciaMes: competenciaMes ? Number(competenciaMes) : undefined,
+      competenciaAno: competenciaAno ? Number(competenciaAno) : undefined,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Erro gclick/run-cycle:', error);
+    res.status(500).json({ error: error.message || 'Erro interno ao executar ciclo.' });
+  }
+});
 
 // ── Send reminder (text only) ──────────────────────
 app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res) => {
@@ -544,7 +1104,7 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
       const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
       await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
       pdfSent = true;
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 5000));
     } catch (pdfErr) {
       console.error('Erro ao enviar PDF:', pdfErr);
       return res.status(500).json({
@@ -620,6 +1180,52 @@ function startOfDay(d) {
   return x;
 }
 
+function shiftCalendarMonth(ano, mes, delta) {
+  const d = new Date(ano, mes - 1 + delta, 1);
+  return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
+}
+
+function monthFirstDayStr(ano, mes) {
+  return `${ano}-${String(mes).padStart(2, '0')}-01`;
+}
+
+function monthLastDayStr(ano, mes) {
+  const lastDay = new Date(ano, mes, 0).getDate();
+  return `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`;
+}
+
+function competenciaFromDueDate(dueDateStr, fallbackMes, fallbackAno) {
+  if (dueDateStr == null || dueDateStr === '') return { mes: fallbackMes, ano: fallbackAno };
+  const str = String(dueDateStr).trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]);
+    if (y >= 1990 && m >= 1 && m <= 12) return { mes: m, ano: y };
+  }
+  const t = Date.parse(str);
+  if (!Number.isNaN(t)) {
+    const d = new Date(t);
+    return { mes: d.getUTCMonth() + 1, ano: d.getUTCFullYear() };
+  }
+  return { mes: fallbackMes, ano: fallbackAno };
+}
+
+function extractStatusFromCoraInvoice(inv) {
+  if (!inv || typeof inv !== 'object') return 'OPEN';
+  const payment = inv.payment && typeof inv.payment === 'object' ? inv.payment : null;
+  const candidates = [inv.status, inv.invoice_status, inv.payment_status, payment && payment.status, inv.state];
+  for (const c of candidates) {
+    if (c != null && String(c).trim() !== '') return String(c).trim().toUpperCase();
+  }
+  return 'OPEN';
+}
+
+function normalizeCoraStatusToken(s) {
+  const u = String(s || '').toUpperCase();
+  return u === 'CANCELED' ? 'CANCELLED' : u;
+}
+
 app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req, res) => {
   try {
     if (!checkCronSecret(req)) return res.status(401).json({ error: 'Não autorizado' });
@@ -651,16 +1257,17 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
       empresaById.set(e.id, e);
     });
 
-    // 3) Sincronizar boletos da API Cora para o clone (mês atual e próximo)
+    // 3) Sincronizar boletos da API Cora para o clone (mês atual e próximo; janela M-1..M+1; competência pelo vencimento)
     for (const { mes, ano } of [{ mes: currentMonth, ano: currentYear }, { mes: nextMonth, ano: nextYear }]) {
-      const start = `${ano}-${String(mes).padStart(2, '0')}-01`;
-      const lastDay = new Date(ano, mes, 0).getDate();
-      const end = `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`;
+      const prevM = shiftCalendarMonth(ano, mes, -1);
+      const nextM = shiftCalendarMonth(ano, mes, 1);
+      const start = monthFirstDayStr(prevM.ano, prevM.mes);
+      const end = monthLastDayStr(nextM.ano, nextM.mes);
       let page = 1;
       const perPage = 200;
       let totalItems = Infinity;
       let fetched = 0;
-      const batch = [];
+      const byInvoiceId = new Map();
       while (fetched < totalItems) {
         const url = `https://matls-clients.api.cora.com.br/v2/invoices/?start=${start}&end=${end}&page=${page}&perPage=${perPage}`;
         const resp = await mtlsGet(url, token, certs);
@@ -671,27 +1278,33 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         if (data.totalItems != null) totalItems = data.totalItems;
         fetched += items.length;
         for (const inv of items) {
-          const rawCnpj = String(inv.customer_document || inv.customer?.document || '').replace(/\D/g, '');
-          const status = (inv.status || 'OPEN').toUpperCase();
-          const dueDate = inv.due_date || inv.dueDate || null;
-          const totalCents = Number(inv.total_amount) || Number(inv.amount?.value) || 0;
           const invoiceId = String(inv.id || inv.invoice_id || '');
-          if (!invoiceId) continue;
-          batch.push({
-            cora_invoice_id: invoiceId,
-            empresa_id: cnpjToEmpresaId.get(rawCnpj) || null,
-            cnpj: rawCnpj,
-            status,
-            total_amount_cents: totalCents,
-            due_date: dueDate,
-            paid_at: inv.paid_at || inv.paidAt || null,
-            competencia_mes: mes,
-            competencia_ano: ano,
-            synced_at: new Date().toISOString(),
-          });
+          if (invoiceId) byInvoiceId.set(invoiceId, inv);
         }
         if (items.length === 0) break;
         page++;
+      }
+      const batch = [];
+      for (const inv of byInvoiceId.values()) {
+        const rawCnpj = String(inv.customer_document || inv.customer?.document || '').replace(/\D/g, '');
+        const status = normalizeCoraStatusToken(extractStatusFromCoraInvoice(inv));
+        const dueDate = inv.due_date || inv.dueDate || null;
+        const totalCents = Number(inv.total_amount) || Number(inv.amount?.value) || 0;
+        const invoiceId = String(inv.id || inv.invoice_id || '');
+        if (!invoiceId) continue;
+        const { mes: compMes, ano: compAno } = competenciaFromDueDate(dueDate, mes, ano);
+        batch.push({
+          cora_invoice_id: invoiceId,
+          empresa_id: cnpjToEmpresaId.get(rawCnpj) || null,
+          cnpj: rawCnpj,
+          status,
+          total_amount_cents: totalCents,
+          due_date: dueDate,
+          paid_at: inv.paid_at || inv.paidAt || null,
+          competencia_mes: compMes,
+          competencia_ano: compAno,
+          synced_at: new Date().toISOString(),
+        });
       }
       if (batch.length) cloneDb.upsertBoletos(batch);
     }
@@ -819,7 +1432,7 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
           await supabase.from('cora_envios').insert(rest);
         }
       }
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 5000));
     }
 
     res.json({ success: true, sent: results.sent, skipped: results.skipped, errors: results.errors });
@@ -856,6 +1469,21 @@ app.post('/api/notifications/whatsapp-optimized/run-daily', async (req, res) => 
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+function initGclickScheduler() {
+  if (gclickCycleSchedulerInitialized) return;
+  gclickCycleSchedulerInitialized = true;
+
+  setInterval(async () => {
+    try {
+      await runGclickCycleInternal();
+    } catch (error) {
+      console.error('Erro no scheduler GClick:', error);
+    }
+  }, 60_000);
+}
+
+initGclickScheduler();
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

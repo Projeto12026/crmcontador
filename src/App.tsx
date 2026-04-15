@@ -20,6 +20,7 @@ import { FinancialPage } from "./pages/FinancialPage";
 import { FinancialNesconPage } from "./pages/FinancialNesconPage";
 import { PricingPage } from "./pages/PricingPage";
 import { CoraPage } from "./pages/CoraPage";
+import { GClickGuidesPage } from "./pages/GClickGuidesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AuthPage } from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
@@ -54,6 +55,7 @@ function ProtectedRoutes() {
         <Route path="/financeiro-nescon" element={<FinancialNesconPage />} />
         <Route path="/precificacao" element={<PricingPage />} />
         <Route path="/cora" element={<CoraPage />} />
+        <Route path="/gclick-whatsapp" element={<GClickGuidesPage />} />
         <Route path="/configuracoes" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

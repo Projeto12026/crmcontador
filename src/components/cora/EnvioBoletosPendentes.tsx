@@ -403,8 +403,8 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP', false, err.message);
       }
 
-      // Delay between sends
-      await new Promise(r => setTimeout(r, 2000));
+      // Delay between sends (5s — evita fila/rate limit na Wascript)
+      await new Promise(r => setTimeout(r, 5000));
     }
 
     const res: EnvioResult = {
@@ -521,7 +521,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP_LEMBRETE', false, err.message);
       }
 
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 5000));
     }
 
     const res: EnvioResult = {

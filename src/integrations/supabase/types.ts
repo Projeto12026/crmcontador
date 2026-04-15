@@ -294,6 +294,7 @@ export type Database = {
           document: string | null
           document_type: string | null
           email: string | null
+          envia_via_gclick: boolean
           id: string
           is_active: boolean | null
           name: string
@@ -315,6 +316,7 @@ export type Database = {
           document?: string | null
           document_type?: string | null
           email?: string | null
+          envia_via_gclick?: boolean
           id?: string
           is_active?: boolean | null
           name: string
@@ -336,6 +338,7 @@ export type Database = {
           document?: string | null
           document_type?: string | null
           email?: string | null
+          envia_via_gclick?: boolean
           id?: string
           is_active?: boolean | null
           name?: string
@@ -656,6 +659,116 @@ export type Database = {
           message_body?: string
           name?: string
           template_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      gclick_guide_jobs: {
+        Row: {
+          arquivo_nome: string | null
+          arquivo_url: string
+          atividade_id: string | null
+          attempts: number
+          client_document: string
+          client_id: string
+          competencia_ano: number
+          competencia_mes: number
+          created_at: string
+          guide_type: string
+          id: string
+          last_error: string | null
+          sent_at: string | null
+          status: string
+          task_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          arquivo_url: string
+          atividade_id?: string | null
+          attempts?: number
+          client_document: string
+          client_id: string
+          competencia_ano: number
+          competencia_mes: number
+          created_at?: string
+          guide_type: string
+          id?: string
+          last_error?: string | null
+          sent_at?: string | null
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          arquivo_nome?: string | null
+          arquivo_url?: string
+          atividade_id?: string | null
+          attempts?: number
+          client_document?: string
+          client_id?: string
+          competencia_ano?: number
+          competencia_mes?: number
+          created_at?: string
+          guide_type?: string
+          id?: string
+          last_error?: string | null
+          sent_at?: string | null
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gclick_guide_jobs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gclick_sync_config: {
+        Row: {
+          ask_send_confirmation_on_sync: boolean
+          competencia_ano: number | null
+          competencia_mes: number | null
+          created_at: string
+          id: string
+          interval_minutes: number
+          is_enabled: boolean
+          last_run_at: string | null
+          last_run_error: string | null
+          match_patterns: Json
+          run_mode: string
+          updated_at: string
+        }
+        Insert: {
+          ask_send_confirmation_on_sync?: boolean
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          created_at?: string
+          id?: string
+          interval_minutes?: number
+          is_enabled?: boolean
+          last_run_at?: string | null
+          last_run_error?: string | null
+          match_patterns?: Json
+          run_mode?: string
+          updated_at?: string
+        }
+        Update: {
+          ask_send_confirmation_on_sync?: boolean
+          competencia_ano?: number | null
+          competencia_mes?: number | null
+          created_at?: string
+          id?: string
+          interval_minutes?: number
+          is_enabled?: boolean
+          last_run_at?: string | null
+          last_run_error?: string | null
+          match_patterns?: Json
+          run_mode?: string
           updated_at?: string
         }
         Relationships: []

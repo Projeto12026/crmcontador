@@ -121,7 +121,7 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
               const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
               await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
               pdfSent = true;
-              await new Promise(r => setTimeout(r, 1500));
+              await new Promise(r => setTimeout(r, 5000));
             }
           }
         }

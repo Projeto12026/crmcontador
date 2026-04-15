@@ -164,6 +164,83 @@ export function useUpsertCoraConfig() {
 
 // ---- Boletos (cache) ----
 
+/** Campos de status em respostas da API v2/invoices (podem variar). */
+export function extractStatusFromCoraInvoice(inv: Record<string, unknown> | null | undefined): string {
+  if (!inv || typeof inv !== 'object') return 'OPEN';
+  const payment = inv.payment as Record<string, unknown> | undefined;
+  const candidates = [
+    inv.status,
+    inv.invoice_status,
+    inv.payment_status,
+    payment?.status,
+    inv.state,
+  ];
+  for (const c of candidates) {
+    if (c != null && String(c).trim() !== '') {
+      return String(c).trim().toUpperCase();
+    }
+  }
+  return 'OPEN';
+}
+
+export function normalizeCoraStatusToken(s: string): string {
+  const u = (s || '').toUpperCase();
+  if (u === 'CANCELED') return 'CANCELLED';
+  return u;
+}
+
+/** Status para UI e regras: prioriza último payload da API em raw_json. */
+export function getBoletoEffectiveStatus(b: CoraBoleto): string {
+  const raw = b.raw_json;
+  if (raw && typeof raw === 'object') {
+    return normalizeCoraStatusToken(extractStatusFromCoraInvoice(raw as Record<string, unknown>));
+  }
+  return normalizeCoraStatusToken(b.status || '');
+}
+
+/** Desloca mês/ano civil (mes 1–12). */
+export function shiftCalendarMonth(ano: number, mes: number, delta: number): { ano: number; mes: number } {
+  const d = new Date(ano, mes - 1 + delta, 1);
+  return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
+}
+
+export function monthFirstDayStr(ano: number, mes: number): string {
+  return `${ano}-${String(mes).padStart(2, '0')}-01`;
+}
+
+export function monthLastDayStr(ano: number, mes: number): string {
+  const lastDay = new Date(ano, mes, 0).getDate();
+  return `${ano}-${String(mes).padStart(2, '0')}-${lastDay}`;
+}
+
+/**
+ * Competência persistida = mês do vencimento (igual ao cartão). Fallback: mês selecionado no sync.
+ * A API Cora usa start/end em YYYY-MM-DD; confirmar no Swagger da Cora se filtram emissão ou vencimento.
+ * A janela M-1..M+1 na busca cobre reemissões com data fora do mês central.
+ */
+export function competenciaFromDueDate(
+  dueDateStr: string | null | undefined,
+  fallbackMes: number,
+  fallbackAno: number,
+): { mes: number; ano: number } {
+  if (!dueDateStr || typeof dueDateStr !== 'string') {
+    return { mes: fallbackMes, ano: fallbackAno };
+  }
+  const trimmed = dueDateStr.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]);
+    if (y >= 1990 && m >= 1 && m <= 12) return { mes: m, ano: y };
+  }
+  const t = Date.parse(trimmed);
+  if (!Number.isNaN(t)) {
+    const d = new Date(t);
+    return { mes: d.getUTCMonth() + 1, ano: d.getUTCFullYear() };
+  }
+  return { mes: fallbackMes, ano: fallbackAno };
+}
+
 export interface CoraBoleto {
   id: string;
   cora_invoice_id: string;
@@ -291,10 +368,11 @@ export function useSyncBoletos() {
       const { access_token } = await tokenRes.json();
       if (!access_token) throw new Error('Token vazio retornado pelo proxy');
 
-      // 2. Search invoices with pagination
-      const start = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-01`;
-      const lastDay = new Date(competenciaAno, competenciaMes, 0).getDate();
-      const end = `${competenciaAno}-${String(competenciaMes).padStart(2, '0')}-${lastDay}`;
+      // 2. Busca na API: janela M-1 .. M+1 (reemissões podem cair fora do mês central no filtro Cora)
+      const prevM = shiftCalendarMonth(competenciaAno, competenciaMes, -1);
+      const nextM = shiftCalendarMonth(competenciaAno, competenciaMes, 1);
+      const start = monthFirstDayStr(prevM.ano, prevM.mes);
+      const end = monthLastDayStr(nextM.ano, nextM.mes);
 
       const allInvoices: any[] = [];
       let page = 1;
@@ -326,9 +404,16 @@ export function useSyncBoletos() {
         page++;
       }
 
-      console.log('[Cora Sync] Total invoices fetched:', allInvoices.length);
-      if (allInvoices.length > 0) {
-        const sample = allInvoices[0];
+      const byInvoiceId = new Map<string, any>();
+      for (const inv of allInvoices) {
+        const id = String(inv.id || inv.invoice_id || '');
+        if (id) byInvoiceId.set(id, inv);
+      }
+      const uniqueInvoices = [...byInvoiceId.values()];
+
+      console.log('[Cora Sync] Total invoices fetched:', allInvoices.length, 'unique:', uniqueInvoices.length);
+      if (uniqueInvoices.length > 0) {
+        const sample = uniqueInvoices[0];
         console.log('[Cora Sync] Sample keys:', Object.keys(sample));
         console.log('[Cora Sync] Sample customer_document:', sample.customer_document);
         console.log('[Cora Sync] Sample total_amount:', sample.total_amount);
@@ -342,10 +427,10 @@ export function useSyncBoletos() {
       // 4. Upsert boletos
       let upserted = 0;
       let errors = 0;
-      for (const inv of allInvoices) {
+      for (const inv of uniqueInvoices) {
         const rawCnpj = String(inv.customer_document || inv.customer?.document || inv.payer?.document || '');
         const cnpj = rawCnpj.replace(/\D/g, '');
-        const status = (inv.status || 'OPEN').toUpperCase();
+        const status = normalizeCoraStatusToken(extractStatusFromCoraInvoice(inv as Record<string, unknown>));
         const dueDate = inv.due_date || inv.dueDate || null;
         const paidAt = inv.paid_at || inv.paidAt || null;
         const totalCents = Number(inv.total_amount) || Number(inv.amount?.value) || Number(inv.total_amount_cents) || 0;
@@ -354,6 +439,7 @@ export function useSyncBoletos() {
         if (!invoiceId) continue;
 
         const empresaId = cnpjMap.get(cnpj) || null;
+        const { mes: compMes, ano: compAno } = competenciaFromDueDate(dueDate, competenciaMes, competenciaAno);
 
         const { error } = await supabase
           .from('cora_boletos')
@@ -365,8 +451,8 @@ export function useSyncBoletos() {
             total_amount_cents: totalCents,
             due_date: dueDate,
             paid_at: paidAt,
-            competencia_mes: competenciaMes,
-            competencia_ano: competenciaAno,
+            competencia_mes: compMes,
+            competencia_ano: compAno,
             raw_json: inv as any,
             synced_at: new Date().toISOString(),
           }, { onConflict: 'cora_invoice_id' });
@@ -379,18 +465,25 @@ export function useSyncBoletos() {
         }
       }
 
-      // 5. Auto-fix: ensure cnpj and total_amount_cents are populated from raw_json
-      // This catches cases where JavaScript field access might fail
-      // Use direct update as fallback to fix empty fields
-      // Use direct update as fallback
-      const { data: emptyBoletos } = await supabase
-        .from('cora_boletos')
-        .select('id, raw_json')
-        .or('cnpj.eq.,total_amount_cents.eq.0')
-        .eq('competencia_ano', competenciaAno)
-        .eq('competencia_mes', competenciaMes);
+      // 5. Auto-fix: cnpj / valor vazios (competência pode ser M-1, M ou M+1 após derive por vencimento)
+      const triad = [
+        shiftCalendarMonth(competenciaAno, competenciaMes, -1),
+        { ano: competenciaAno, mes: competenciaMes },
+        shiftCalendarMonth(competenciaAno, competenciaMes, 1),
+      ];
+      const emptyById = new Map<string, { id: string; raw_json: unknown }>();
+      for (const { ano, mes } of triad) {
+        const { data: rows } = await supabase
+          .from('cora_boletos')
+          .select('id, raw_json')
+          .or('cnpj.eq.,total_amount_cents.eq.0')
+          .eq('competencia_ano', ano)
+          .eq('competencia_mes', mes);
+        (rows || []).forEach((row: { id: string; raw_json: unknown }) => emptyById.set(row.id, row));
+      }
+      const emptyBoletos = [...emptyById.values()];
 
-      if (emptyBoletos && emptyBoletos.length > 0) {
+      if (emptyBoletos.length > 0) {
         console.log(`[Cora Sync] Fixing ${emptyBoletos.length} boletos with empty fields from raw_json`);
         for (const b of emptyBoletos) {
           const raw = b.raw_json as any;
@@ -398,7 +491,7 @@ export function useSyncBoletos() {
           const fixedCnpj = String(raw.customer_document || '').replace(/\D/g, '');
           const fixedAmount = Number(raw.total_amount) || 0;
           const fixedEmpresaId = cnpjMap.get(fixedCnpj) || null;
-          
+
           await supabase.from('cora_boletos').update({
             cnpj: fixedCnpj,
             total_amount_cents: fixedAmount,
@@ -407,8 +500,8 @@ export function useSyncBoletos() {
         }
       }
 
-      console.log(`[Cora Sync] Done: ${upserted} upserted, ${errors} errors out of ${allInvoices.length}`);
-      return { fetched: allInvoices.length, upserted };
+      console.log(`[Cora Sync] Done: ${upserted} upserted, ${errors} errors out of ${uniqueInvoices.length} unique`);
+      return { fetched: uniqueInvoices.length, upserted };
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['cora_boletos'] });
