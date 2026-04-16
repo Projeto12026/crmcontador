@@ -703,6 +703,7 @@ export function FinancialNesconPage() {
           count={selectedTransactionIds.size}
           onConfirm={handleConfirmBulkEdit}
           accounts={categoriesFlat || []}
+          financialAccounts={financialAccounts || []}
         />
 
         {/* Category dialog */}

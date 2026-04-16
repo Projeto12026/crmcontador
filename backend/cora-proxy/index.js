@@ -8,6 +8,7 @@ import * as cloneDb from './clone-db.js';
 const app = express();
 app.use(cors());
 app.use(express.json());
+cloneDb.initSchemaIfNeeded();
 
 // ── Helper: carrega certificados (base64 env OU arquivo) ──
 function loadCertificates() {
@@ -500,25 +501,17 @@ function extractActivityFiles(activity) {
   return [];
 }
 
-async function loadGclickCredentials(supabase) {
+async function loadGclickCredentials() {
   let appKey = process.env.GCLICK_APP_KEY || '';
   let appSecret = process.env.GCLICK_APP_SECRET || '';
   if (appKey && appSecret) return { appKey, appSecret };
 
-  if (!supabase) throw new Error('Credenciais GClick não configuradas no ambiente.');
-
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'gclick_credentials')
-    .maybeSingle();
-  if (error) throw error;
-
-  appKey = data?.value?.app_key || appKey;
-  appSecret = data?.value?.app_secret || appSecret;
+  const stored = cloneDb.getGclickSettingJson('gclick_credentials');
+  appKey = stored?.app_key || appKey;
+  appSecret = stored?.app_secret || appSecret;
 
   if (!appKey || !appSecret) {
-    throw new Error('Credenciais GClick não configuradas. Defina GCLICK_APP_KEY/GCLICK_APP_SECRET ou settings.gclick_credentials.');
+    throw new Error('Credenciais GClick não configuradas. Defina GCLICK_APP_KEY/GCLICK_APP_SECRET ou rode sync-clone para importar settings.gclick_credentials para o SQLite da VPS.');
   }
   return { appKey, appSecret };
 }
@@ -591,51 +584,20 @@ async function fetchTaskActivities(token, taskId) {
   }
 }
 
-async function loadGclickConfigForRun(supabase, forcedMes, forcedAno) {
-  const { data, error } = await supabase
-    .from('gclick_sync_config')
-    .select('*')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-
-  const now = new Date();
-  const cfg = data || {
-    is_enabled: false,
-    ask_send_confirmation_on_sync: false,
-    run_mode: 'sync_only',
-    interval_minutes: 5,
-    competencia_mes: now.getMonth() + 1,
-    competencia_ano: now.getFullYear(),
-    match_patterns: DEFAULT_GCLICK_PATTERNS,
-    last_run_at: null,
-  };
-
+function loadGclickConfigForRun(forcedMes, forcedAno) {
+  const cfg = cloneDb.getGclickSyncConfigMerged(forcedMes, forcedAno);
   return {
     ...cfg,
-    competencia_mes: forcedMes || cfg.competencia_mes || now.getMonth() + 1,
-    competencia_ano: forcedAno || cfg.competencia_ano || now.getFullYear(),
-    run_mode: cfg.run_mode || 'sync_only',
-    ask_send_confirmation_on_sync: Boolean(cfg.ask_send_confirmation_on_sync),
-    interval_minutes: Math.max(5, Number(cfg.interval_minutes || 5)),
     match_patterns: normalizePatterns(cfg.match_patterns),
   };
 }
 
 async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types = ['INSS', 'FGTS'], onlyEnabledClients = true }) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
-
-  const config = await loadGclickConfigForRun(supabase, competenciaMes, competenciaAno);
+  const config = loadGclickConfigForRun(competenciaMes, competenciaAno);
   const enabledTypes = Array.isArray(types) && types.length ? types : ['INSS', 'FGTS'];
-  const matchPatterns = normalizePatterns(config.match_patterns);
+  const matchPatterns = config.match_patterns;
 
-  let clientQuery = supabase.from('clients').select('id, name, document, phone, envia_via_gclick');
-  if (onlyEnabledClients) clientQuery = clientQuery.eq('envia_via_gclick', true);
-  const { data: clients, error: clientsError } = await clientQuery;
-  if (clientsError) throw clientsError;
-
+  const clients = cloneDb.getGclickClients(onlyEnabledClients);
   const clientByDoc = new Map();
   for (const c of clients || []) {
     const doc = sanitizeDigits(c.document);
@@ -643,7 +605,7 @@ async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types 
     clientByDoc.set(doc, c);
   }
 
-  const { appKey, appSecret } = await loadGclickCredentials(supabase);
+  const { appKey, appSecret } = await loadGclickCredentials();
   const token = await getGclickAccessToken(appKey, appSecret);
   const tasks = await fetchGclickTasks(token, config.competencia_mes, config.competencia_ano);
 
@@ -654,12 +616,7 @@ async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types 
   let alreadySent = 0;
   const upserts = [];
 
-  const { data: existingRows, error: existingError } = await supabase
-    .from('gclick_guide_jobs')
-    .select('id, client_id, guide_type, competencia_mes, competencia_ano, arquivo_url, status, sent_at, attempts')
-    .eq('competencia_mes', config.competencia_mes)
-    .eq('competencia_ano', config.competencia_ano);
-  if (existingError) throw existingError;
+  const existingRows = cloneDb.listGclickGuideJobsForCompetencia(config.competencia_mes, config.competencia_ano);
 
   const existingByKey = new Map();
   for (const row of existingRows || []) {
@@ -713,13 +670,9 @@ async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types 
   }
 
   if (upserts.length) {
-    const { error: upsertError } = await supabase
-      .from('gclick_guide_jobs')
-      .upsert(upserts, {
-        onConflict: 'client_id,guide_type,competencia_mes,competencia_ano,arquivo_url',
-        ignoreDuplicates: false,
-      });
-    if (upsertError) {
+    try {
+      cloneDb.upsertGclickGuideJobs(upserts);
+    } catch (upsertError) {
       errors += 1;
       throw upsertError;
     }
@@ -731,30 +684,15 @@ async function syncGclickGuidesInternal({ competenciaMes, competenciaAno, types 
 }
 
 async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds = null, sendAll = false }) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
+  const jobs = cloneDb.listGclickJobsForSend({
+    competenciaMes,
+    competenciaAno,
+    jobIds,
+    sendAll: Boolean(sendAll),
+  });
 
-  let query = supabase
-    .from('gclick_guide_jobs')
-    .select('id, client_id, client_document, guide_type, competencia_mes, competencia_ano, arquivo_nome, arquivo_url, status, attempts, clients(id, name, phone, envia_via_gclick)')
-    .eq('competencia_mes', competenciaMes)
-    .eq('competencia_ano', competenciaAno);
-
-  if (!sendAll && Array.isArray(jobIds) && jobIds.length) {
-    query = query.in('id', jobIds);
-  }
-
-  const { data: jobs, error: jobsError } = await query;
-  if (jobsError) throw jobsError;
-
-  const { data: cfgRows, error: cfgError } = await supabase
-    .from('cora_config')
-    .select('chave, valor')
-    .eq('chave', 'whatsapp')
-    .limit(1);
-  if (cfgError) throw cfgError;
-
-  const whatsappCfg = cfgRows?.[0]?.valor || {};
+  const whatsappRow = cloneDb.getConfig('whatsapp');
+  const whatsappCfg = whatsappRow?.valor || {};
   const wascriptConfig = getWascriptConfig({
     wascriptApiUrl: whatsappCfg.api_url,
     wascriptToken: whatsappCfg.token,
@@ -773,13 +711,10 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
   for (const job of jobs || []) {
     if (job?.clients?.envia_via_gclick === false) {
       skipped += 1;
-      await supabase
-        .from('gclick_guide_jobs')
-        .update({
-          status: 'SKIPPED',
-          last_error: 'Cliente desmarcado para envio via Gclick.',
-        })
-        .eq('id', job.id);
+      cloneDb.updateGclickJob(job.id, {
+        status: 'SKIPPED',
+        last_error: 'Cliente desmarcado para envio via Gclick.',
+      });
       continue;
     }
 
@@ -795,10 +730,11 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
     if (sanitizeDigits(phone).length < 10) {
       failed += 1;
       details.push({ jobId: job.id, error: 'Telefone do cliente inválido.' });
-      await supabase
-        .from('gclick_guide_jobs')
-        .update({ status: 'FAILED', attempts: (job.attempts || 0) + 1, last_error: 'Telefone do cliente inválido.' })
-        .eq('id', job.id);
+      cloneDb.updateGclickJob(job.id, {
+        status: 'FAILED',
+        attempts: (job.attempts || 0) + 1,
+        last_error: 'Telefone do cliente inválido.',
+      });
       continue;
     }
 
@@ -823,28 +759,22 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
         });
       }
 
-      await supabase
-        .from('gclick_guide_jobs')
-        .update({
-          status: 'SENT',
-          attempts: (job.attempts || 0) + 1,
-          last_error: null,
-          sent_at: new Date().toISOString(),
-        })
-        .eq('id', job.id);
+      cloneDb.updateGclickJob(job.id, {
+        status: 'SENT',
+        attempts: (job.attempts || 0) + 1,
+        last_error: null,
+        sent_at: new Date().toISOString(),
+      });
       sent += 1;
       details.push({ jobId: job.id, status: 'sent' });
     } catch (e) {
       failed += 1;
       details.push({ jobId: job.id, error: e.message || 'Erro desconhecido' });
-      await supabase
-        .from('gclick_guide_jobs')
-        .update({
-          status: 'FAILED',
-          attempts: (job.attempts || 0) + 1,
-          last_error: e.message || 'Erro desconhecido',
-        })
-        .eq('id', job.id);
+      cloneDb.updateGclickJob(job.id, {
+        status: 'FAILED',
+        attempts: (job.attempts || 0) + 1,
+        last_error: e.message || 'Erro desconhecido',
+      });
     }
 
     await new Promise((r) => setTimeout(r, 1500));
@@ -854,11 +784,9 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
 }
 
 async function runGclickCycleInternal({ forceRun = false, competenciaMes, competenciaAno } = {}) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error('SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios.');
   if (gclickCycleRunning) return { success: true, skipped: true, reason: 'cycle_already_running' };
 
-  const cfg = await loadGclickConfigForRun(supabase, competenciaMes, competenciaAno);
+  const cfg = loadGclickConfigForRun(competenciaMes, competenciaAno);
   if (!cfg.is_enabled && !forceRun) return { success: true, skipped: true, reason: 'disabled' };
 
   if (!forceRun && cfg.last_run_at) {
@@ -886,27 +814,17 @@ async function runGclickCycleInternal({ forceRun = false, competenciaMes, compet
       });
     }
 
-    if (cfg.id) {
-      await supabase
-        .from('gclick_sync_config')
-        .update({
-          last_run_at: new Date().toISOString(),
-          last_run_error: null,
-        })
-        .eq('id', cfg.id);
-    }
+    cloneDb.updateGclickSyncConfigTelemetry(cfg.id, {
+      last_run_at: new Date().toISOString(),
+      last_run_error: null,
+    });
 
     return { success: true, sync: syncResult, send: sendResult };
   } catch (e) {
-    if (cfg.id) {
-      await supabase
-        .from('gclick_sync_config')
-        .update({
-          last_run_at: new Date().toISOString(),
-          last_run_error: e.message || 'Erro desconhecido',
-        })
-        .eq('id', cfg.id);
-    }
+    cloneDb.updateGclickSyncConfigTelemetry(cfg.id, {
+      last_run_at: new Date().toISOString(),
+      last_run_error: e.message || 'Erro desconhecido',
+    });
     throw e;
   } finally {
     gclickCycleRunning = false;

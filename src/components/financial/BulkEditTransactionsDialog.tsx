@@ -5,8 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CashFlowTransaction, TransactionType } from '@/types/crm';
-import { AccountCategory } from '@/types/crm';
+import { AccountCategory, FinancialAccount } from '@/types/crm';
 
 export type BulkUpdateStatus = 'projected' | 'executed' | 'mixed';
 
@@ -23,6 +22,8 @@ interface BulkEditTransactionsDialogProps {
     status?: BulkUpdateStatus;
   }) => void;
   accounts: AccountCategory[];
+  /** Contas financeiras para Origem/Destino (lista suspensa). */
+  financialAccounts?: FinancialAccount[];
 }
 
 export function BulkEditTransactionsDialog({
@@ -31,6 +32,7 @@ export function BulkEditTransactionsDialog({
   count,
   onConfirm,
   accounts,
+  financialAccounts = [],
 }: BulkEditTransactionsDialogProps) {
   const [changeDate, setChangeDate] = useState(false);
   const [changeAccount, setChangeAccount] = useState(false);
@@ -42,7 +44,7 @@ export function BulkEditTransactionsDialog({
   const [date, setDate] = useState('');
   const [accountId, setAccountId] = useState<string>('');
   const [value, setValue] = useState<string>('');
-  const [origin, setOrigin] = useState('');
+  const [originFinancialAccountId, setOriginFinancialAccountId] = useState<string>('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<BulkUpdateStatus>('executed');
 
@@ -59,7 +61,12 @@ export function BulkEditTransactionsDialog({
     if (changeDate && date) changes.date = date;
     if (changeAccount && accountId) changes.account_id = accountId;
     if (changeValue && value) changes.value = parseFloat(value.replace(',', '.')) || 0;
-    if (changeOrigin && origin.trim()) changes.origin_destination = origin.trim();
+    if (changeOrigin && originFinancialAccountId) {
+      const selectedFinancialAccount = (financialAccounts ?? []).find((acc) => acc.id === originFinancialAccountId);
+      if (selectedFinancialAccount?.name) {
+        changes.origin_destination = selectedFinancialAccount.name;
+      }
+    }
     if (changeDescription && description.trim()) changes.description = description.trim();
     if (changeStatus) changes.status = status;
 
@@ -137,11 +144,22 @@ export function BulkEditTransactionsDialog({
               <Checkbox checked={changeOrigin} onCheckedChange={v => setChangeOrigin(!!v)} />
               <div className="space-y-1 flex-1">
                 <Label>Origem/Destino</Label>
-                <Input
-                  value={origin}
-                  onChange={e => setOrigin(e.target.value)}
-                  disabled={!changeOrigin}
-                />
+                <Select
+                  value={originFinancialAccountId || undefined}
+                  onValueChange={v => setOriginFinancialAccountId(v)}
+                  disabled={!changeOrigin || !(financialAccounts ?? []).length}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={(financialAccounts ?? []).length ? 'Selecione a conta financeira' : 'Cadastre contas em Financeiro → Contas'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(financialAccounts ?? []).map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

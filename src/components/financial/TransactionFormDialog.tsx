@@ -58,6 +58,9 @@ export function TransactionFormDialog({
 
   const [formData, setFormData] = useState<CashFlowTransactionFormData>(getInitialFormData());
 
+  const selectedFinancialAccountName =
+    financialAccounts.find((acc) => acc.id === formData.financial_account_id)?.name || '';
+
   // Preencher formulário quando estiver editando
   useEffect(() => {
     if (editingTransaction) {
@@ -88,7 +91,8 @@ export function TransactionFormDialog({
     const submitData = { 
       ...formData, 
       type: editingTransaction?.type || type,
-      origin_destination: formData.description, // usar descrição como origem/destino
+      // Origem/Destino deve refletir a conta financeira escolhida.
+      origin_destination: selectedFinancialAccountName || formData.origin_destination || formData.description,
     };
     onSubmit(submitData);
     setFormData(getInitialFormData());

@@ -620,6 +620,7 @@ export function FinancialPage() {
         count={selectedTransactionIds.size}
         onConfirm={handleConfirmBulkEdit}
         accounts={categoriesFlat || []}
+        financialAccounts={financialAccounts || []}
       />
       
       {/* Dialog de conta */}
