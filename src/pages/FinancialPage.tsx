@@ -11,7 +11,7 @@ import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportI
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
-import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction, useBulkUpdateCashFlowTransactions } from '@/hooks/useCashFlow';
+import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction, useBulkUpdateCashFlowTransactions, matchesCashFlowFinancialAccountFilter } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
 
 import { AccountCategoryTree } from '@/components/financial/AccountCategoryTree';
@@ -82,7 +82,6 @@ export function FinancialPage() {
     endDate: filters.endDate,
     accountId: filters.accountId,
     type: filters.type,
-    financialAccountId: filters.financialAccountId,
     source: 'financeiro',
   });
   
@@ -104,7 +103,20 @@ export function FinancialPage() {
     source: 'financeiro',
   });
 
-  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'financeiro');
+  const selectedFinancialAccountLabel = useMemo(() => {
+    if (!filters.financialAccountId || !financialAccounts?.length) return null;
+    return financialAccounts.find((a) => a.id === filters.financialAccountId)?.name ?? null;
+  }, [filters.financialAccountId, financialAccounts]);
+
+  const financialFilterNameNorm = selectedFinancialAccountLabel?.trim().toLowerCase() ?? null;
+
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(
+    filters.startDate,
+    filters.endDate,
+    filters.financialAccountId,
+    'financeiro',
+    selectedFinancialAccountLabel,
+  );
   const { data: clients } = useClients();
 
   // Filtrar transações localmente para filtros que não estão na query
@@ -113,7 +125,7 @@ export function FinancialPage() {
     
     return transactions.filter(tx => {
       if (filters.groupNumber && tx.account?.group_number !== filters.groupNumber) return false;
-      if (filters.financialAccountId && tx.financial_account_id !== filters.financialAccountId) return false;
+      if (!matchesCashFlowFinancialAccountFilter(tx, filters.financialAccountId, financialFilterNameNorm)) return false;
       if (filters.status) {
         const hasFuture = (tx.type === 'income' ? tx.future_income : tx.future_expense) > 0;
         const hasExecuted = (tx.type === 'income' ? tx.income : tx.expense) > 0;
@@ -125,12 +137,13 @@ export function FinancialPage() {
         const term = filters.searchTerm.toLowerCase();
         const matchDescription = tx.description.toLowerCase().includes(term);
         const matchValue = tx.value.toString().includes(term);
-        const matchOrigin = tx.origin_destination?.toLowerCase().includes(term);
+        const originLabel = (tx.financial_account?.name ?? tx.origin_destination ?? '').toLowerCase();
+        const matchOrigin = originLabel.includes(term);
         if (!matchDescription && !matchValue && !matchOrigin) return false;
       }
       return true;
     });
-  }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status, filters.searchTerm]);
+  }, [transactions, filters.groupNumber, filters.financialAccountId, financialFilterNameNorm, filters.status, filters.searchTerm]);
 
   // Recalcular summary quando há filtros locais
   const hasLocalFilters = filters.groupNumber || filters.status || filters.searchTerm;
@@ -255,6 +268,7 @@ export function FinancialPage() {
     account_id?: string;
     value?: number;
     origin_destination?: string;
+    financial_account_id?: string | null;
     description?: string;
     status?: 'projected' | 'executed' | 'mixed';
   }) => {

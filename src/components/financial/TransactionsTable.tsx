@@ -48,7 +48,7 @@ function exportToExcel(transactions: CashFlowTransaction[]) {
       tx.account_id,
       tx.account?.name || '',
       tx.description,
-      tx.origin_destination || '',
+      (tx.financial_account?.name ?? tx.origin_destination) || '',
       tx.type === 'income' ? 'Receita' : 'Despesa',
       futureValue.toFixed(2).replace('.', ','),
       executedValue.toFixed(2).replace('.', ','),
@@ -164,7 +164,7 @@ export function TransactionsTable({
                     <span className="text-sm">{tx.account?.name}</span>
                   </TableCell>
                   <TableCell className="font-medium">{tx.description}</TableCell>
-                  <TableCell>{tx.origin_destination}</TableCell>
+                  <TableCell>{tx.financial_account?.name ?? tx.origin_destination ?? ''}</TableCell>
                   <TableCell className="text-right">
                     {hasFuture && (
                       <span className="text-blue-600">

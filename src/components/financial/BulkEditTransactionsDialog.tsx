@@ -18,6 +18,7 @@ interface BulkEditTransactionsDialogProps {
     account_id?: string;
     value?: number;
     origin_destination?: string;
+    financial_account_id?: string | null;
     description?: string;
     status?: BulkUpdateStatus;
   }) => void;
@@ -54,6 +55,7 @@ export function BulkEditTransactionsDialog({
       account_id?: string;
       value?: number;
       origin_destination?: string;
+      financial_account_id?: string | null;
       description?: string;
       status?: BulkUpdateStatus;
     } = {};
@@ -65,6 +67,7 @@ export function BulkEditTransactionsDialog({
       const selectedFinancialAccount = (financialAccounts ?? []).find((acc) => acc.id === originFinancialAccountId);
       if (selectedFinancialAccount?.name) {
         changes.origin_destination = selectedFinancialAccount.name;
+        changes.financial_account_id = originFinancialAccountId;
       }
     }
     if (changeDescription && description.trim()) changes.description = description.trim();

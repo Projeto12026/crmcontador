@@ -13,7 +13,7 @@ import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/C
 import { TransactionsTable } from '@/components/financial/TransactionsTable';
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 
-import { useCashFlowTransactions, useCashFlowSummary, useSettleTransaction, useDeleteCashFlowTransaction } from '@/hooks/useCashFlow';
+import { useCashFlowTransactions, useCashFlowSummary, useSettleTransaction, useDeleteCashFlowTransaction, matchesCashFlowFinancialAccountFilter } from '@/hooks/useCashFlow';
 import { useAccountCategoriesFlat } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useQuery } from '@tanstack/react-query';
@@ -730,10 +730,23 @@ export function NesconCashFlowView() {
     endDate: filters.endDate,
     accountId: filters.accountId,
     type: filters.type,
-    financialAccountId: filters.financialAccountId,
     source: 'nescon',
   });
-  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(filters.startDate, filters.endDate, filters.financialAccountId, 'nescon');
+
+  const selectedFinancialAccountLabel = useMemo(() => {
+    if (!filters.financialAccountId || !financialAccounts?.length) return null;
+    return financialAccounts.find((a) => a.id === filters.financialAccountId)?.name ?? null;
+  }, [filters.financialAccountId, financialAccounts]);
+
+  const financialFilterNameNorm = selectedFinancialAccountLabel?.trim().toLowerCase() ?? null;
+
+  const { data: rawSummary, isLoading: loadingSummary } = useCashFlowSummary(
+    filters.startDate,
+    filters.endDate,
+    filters.financialAccountId,
+    'nescon',
+    selectedFinancialAccountLabel,
+  );
 
   // Cora boletos paid for cash-flow tab period
   const { data: coraPaidCashFlow } = useQuery({
@@ -794,7 +807,7 @@ export function NesconCashFlowView() {
     if (!transactions) return [];
     return transactions.filter(tx => {
       if (filters.groupNumber && tx.account?.group_number !== filters.groupNumber) return false;
-      if (filters.financialAccountId && tx.financial_account_id !== filters.financialAccountId) return false;
+      if (!matchesCashFlowFinancialAccountFilter(tx, filters.financialAccountId, financialFilterNameNorm)) return false;
       if (filters.status) {
         const hasFuture = (tx.type === 'income' ? tx.future_income : tx.future_expense) > 0;
         const hasExecuted = (tx.type === 'income' ? tx.income : tx.expense) > 0;
@@ -804,11 +817,12 @@ export function NesconCashFlowView() {
       }
       if (filters.searchTerm) {
         const term = filters.searchTerm.toLowerCase();
-        if (!tx.description.toLowerCase().includes(term) && !tx.value.toString().includes(term) && !tx.origin_destination?.toLowerCase().includes(term)) return false;
+        const originLabel = (tx.financial_account?.name ?? tx.origin_destination ?? '').toLowerCase();
+        if (!tx.description.toLowerCase().includes(term) && !tx.value.toString().includes(term) && !originLabel.includes(term)) return false;
       }
       return true;
     });
-  }, [transactions, filters.groupNumber, filters.financialAccountId, filters.status, filters.searchTerm]);
+  }, [transactions, filters.groupNumber, filters.financialAccountId, financialFilterNameNorm, filters.status, filters.searchTerm]);
 
   // Recalculate summary with local filters
   const hasLocalFilters = filters.groupNumber || filters.status || filters.searchTerm;

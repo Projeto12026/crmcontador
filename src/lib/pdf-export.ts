@@ -65,7 +65,7 @@ export function exportTransactionsPdf(
       tx.type === 'income' ? 'Receita' : 'Despesa',
       account,
       tx.description,
-      tx.origin_destination || '',
+      (tx.financial_account?.name ?? tx.origin_destination) || '',
       formatCurrency(Number(tx.value)),
       status,
     ];

@@ -4,6 +4,21 @@ import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, Acco
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
 
+/** Filtro por conta financeira: usa `financial_account_id`; se estiver vazio, aceita `origin_destination` igual ao nome da conta (lançamentos antigos). */
+export function matchesCashFlowFinancialAccountFilter(
+  tx: Pick<CashFlowTransaction, 'financial_account_id' | 'origin_destination'>,
+  financialAccountId: string | undefined,
+  /** Nome da conta (trim + toLowerCase), ex. vindo de `financial_accounts` */
+  financialAccountNameNorm: string | null | undefined,
+): boolean {
+  if (!financialAccountId) return true;
+  if (tx.financial_account_id === financialAccountId) return true;
+  if (!tx.financial_account_id && financialAccountNameNorm) {
+    return (tx.origin_destination || '').trim().toLowerCase() === financialAccountNameNorm;
+  }
+  return false;
+}
+
 // Buscar lançamentos
 export function useCashFlowTransactions(filters?: {
   startDate?: string;
@@ -13,8 +28,9 @@ export function useCashFlowTransactions(filters?: {
   financialAccountId?: string;
   source?: string;
 }) {
+  const { financialAccountId: _faOmit, ...cacheFilters } = filters ?? {};
   return useQuery({
-    queryKey: ['cash_flow_transactions', filters],
+    queryKey: ['cash_flow_transactions', cacheFilters],
     queryFn: async () => {
       let query = supabase
         .from('cash_flow_transactions')
@@ -41,9 +57,6 @@ export function useCashFlowTransactions(filters?: {
       if (filters?.type) {
         query = query.eq('type', filters.type);
       }
-      if (filters?.financialAccountId) {
-        query = query.eq('financial_account_id', filters.financialAccountId);
-      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -59,14 +72,22 @@ export function useCashFlowTransactions(filters?: {
 }
 
 // Resumo do fluxo de caixa por período
-export function useCashFlowSummary(startDate: string, endDate: string, financialAccountId?: string, source?: string) {
+export function useCashFlowSummary(
+  startDate: string,
+  endDate: string,
+  financialAccountId?: string,
+  source?: string,
+  /** Nome da conta no cadastro (para somar lançamentos sem FK com mesmo texto em origin_destination) */
+  financialAccountLabel?: string | null,
+) {
   return useQuery({
-    queryKey: ['cash_flow_summary', startDate, endDate, financialAccountId, source],
+    queryKey: ['cash_flow_summary', startDate, endDate, financialAccountId, financialAccountLabel, source],
     queryFn: async () => {
       let query = supabase
         .from('cash_flow_transactions')
         .select(`
           income, expense, future_income, future_expense,
+          financial_account_id, origin_destination,
           account_categories!inner(group_number)
         `)
         .gte('date', startDate)
@@ -75,20 +96,29 @@ export function useCashFlowSummary(startDate: string, endDate: string, financial
       if (source) {
         query = query.eq('source', source);
       }
-      if (financialAccountId) {
-        query = query.eq('financial_account_id', financialAccountId);
-      }
 
       const { data: transactions, error } = await query;
 
       if (error) throw error;
 
+      const nameNorm = financialAccountLabel?.trim().toLowerCase() || null;
+
       // Nescon usa todos os seus grupos; Financeiro exclui grupos > 6 e administrativos (100, 200)
       const filtered = transactions?.filter(t => {
         const group = (t.account_categories as { group_number: number })?.group_number;
         if (!group) return false;
-        if (source === 'nescon') return true;
-        if (group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) return false;
+        if (source === 'nescon') {
+          // segue
+        } else if (group > 6 || EXCLUDED_ACCOUNT_GROUPS.has(group)) {
+          return false;
+        }
+        if (financialAccountId) {
+          return matchesCashFlowFinancialAccountFilter(
+            t as Pick<CashFlowTransaction, 'financial_account_id' | 'origin_destination'>,
+            financialAccountId,
+            nameNorm,
+          );
+        }
         return true;
       }) || [];
 
@@ -423,6 +453,7 @@ export function useBulkUpdateCashFlowTransactions() {
       account_id?: string;
       value?: number;
       origin_destination?: string;
+      financial_account_id?: string | null;
       description?: string;
       status?: 'projected' | 'executed' | 'mixed';
     } }) => {
@@ -446,6 +477,9 @@ export function useBulkUpdateCashFlowTransactions() {
         }
         if (changes.account_id) updateData.account_id = changes.account_id;
         if (changes.origin_destination !== undefined) updateData.origin_destination = changes.origin_destination;
+        if (Object.prototype.hasOwnProperty.call(changes, 'financial_account_id')) {
+          updateData.financial_account_id = changes.financial_account_id;
+        }
         if (changes.description !== undefined) updateData.description = changes.description;
 
         const value = changes.value ?? tx.value;
