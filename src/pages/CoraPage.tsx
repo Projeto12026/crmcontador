@@ -15,7 +15,9 @@ import {
   CoraEmpresaFormData,
   CoraBoleto,
   getBoletoEffectiveStatus,
+  type SyncEmpresasFromCRMResult,
 } from '@/hooks/useCora';
+import { useToast } from '@/hooks/use-toast';
 import { useClients } from '@/hooks/useClients';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +49,7 @@ import {
 } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Plus, Edit, Trash2, Loader2, Settings2, Building2, LayoutDashboard,
   RefreshCw, CheckCircle2, Clock, AlertTriangle, XCircle, HelpCircle,
@@ -528,8 +531,10 @@ function CompanyCard({ empresa, competenciaMes, competenciaAno }: {
 // ===================== EMPRESAS TAB =====================
 
 function EmpresasTab() {
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<CoraEmpresa | null>(null);
+  const [syncReport, setSyncReport] = useState<SyncEmpresasFromCRMResult | null>(null);
   const { data: empresas, isLoading } = useCoraEmpresas();
   const { data: clients } = useClients();
   const createEmpresa = useCreateCoraEmpresa();
@@ -602,6 +607,26 @@ function EmpresasTab() {
 
   const totalMensal = empresas?.filter(e => e.is_active).reduce((s, e) => s + (e.valor_mensal || 0), 0) || 0;
 
+  const handleSyncFromCrm = async () => {
+    setSyncReport(null);
+    try {
+      const r = await syncFromCRM.mutateAsync();
+      setSyncReport(r);
+      const ign =
+        r.skipped.sem_cliente +
+        r.skipped.sem_documento +
+        r.skipped.documento_invalido +
+        r.skipped.ja_cadastrado_cora +
+        r.skipped.documento_duplicado_no_lote;
+      toast({
+        title: r.inserted === 0 ? 'Sincronização concluída' : `${r.inserted} empresa(s) incluída(s) no Cora`,
+        description: `Contratos analisados: ${r.contractsRows}. Ignorados: ${ign}. Total em cora_empresas: ${r.totalAfter}.`,
+      });
+    } catch {
+      setSyncReport(null);
+    }
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-4">
@@ -609,7 +634,7 @@ function EmpresasTab() {
           <strong>Total Mensal (ativas):</strong> {formatCurrency(totalMensal)} · {empresas?.filter(e => e.is_active).length || 0} empresas
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => syncFromCRM.mutate()} disabled={syncFromCRM.isPending}>
+          <Button variant="outline" onClick={handleSyncFromCrm} disabled={syncFromCRM.isPending}>
             {syncFromCRM.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Sincronizar do CRM
           </Button>
@@ -619,6 +644,42 @@ function EmpresasTab() {
           </Button>
         </div>
       </div>
+
+      {syncReport && (
+        <Alert className="mb-4">
+          <Users className="h-4 w-4" />
+          <AlertTitle>Última sincronização (origem dos dados)</AlertTitle>
+          <AlertDescription className="space-y-2 text-muted-foreground">
+            <p className="text-foreground font-medium">{syncReport.fonte}</p>
+            <p>
+              Contratos lidos no CRM: <strong>{syncReport.contractsRows}</strong> · Novas linhas em cora_empresas:{' '}
+              <strong>{syncReport.inserted}</strong> · Total de documentos distintos já em cora_empresas após a sync:{' '}
+              <strong>{syncReport.totalAfter}</strong>
+            </p>
+            <p className="text-xs">
+              Ignorados — sem cliente: {syncReport.skipped.sem_cliente}, sem documento: {syncReport.skipped.sem_documento},{' '}
+              CPF/CNPJ inválido (≠11/14 dígitos): {syncReport.skipped.documento_invalido}, já cadastrado no Cora:{' '}
+              {syncReport.skipped.ja_cadastrado_cora}, documento repetido em outro contrato:{' '}
+              {syncReport.skipped.documento_duplicado_no_lote}
+            </p>
+            {syncReport.insertedNames.length > 0 && (
+              <p className="text-xs">
+                <span className="font-medium text-foreground">Incluídos agora:</span> {syncReport.insertedNames.join(', ')}
+              </p>
+            )}
+            {syncReport.skippedSamples.length > 0 && (
+              <ul className="list-disc pl-4 text-xs space-y-0.5">
+                {syncReport.skippedSamples.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            )}
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setSyncReport(null)}>
+              Ocultar relatório
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -963,6 +1024,7 @@ function ParametrosTab() {
             <CardTitle className="text-lg">Arquitetura da Integração</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p><strong>0. Empresas (CRM → Cora):</strong> O botão &quot;Sincronizar do CRM&quot; lê <code>contracts</code> (ativo ou suspenso) com <code>client_id</code> e insere em <code>cora_empresas</code> usando documento do cliente (CPF 11 ou CNPJ 14 dígitos). O relatório na aba Empresas mostra a origem e o que foi ignorado.</p>
             <p><strong>1. Token:</strong> O backend (VPS com certificados) autentica via mTLS em <code>matls-clients.api.cora.com.br/token</code> e retorna o access_token.</p>
             <p><strong>2. Busca:</strong> Com o token, busca boletos em <code>/v2/invoices?search=CNPJ&start=...&end=...</code>.</p>
             <p><strong>3. Status:</strong> OPEN, PAID, LATE, CANCELLED, DRAFT, IN_PAYMENT.</p>

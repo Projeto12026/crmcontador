@@ -32,6 +32,37 @@ export interface CoraEmpresaFormData {
   is_active?: boolean;
 }
 
+/** Documento normalizado para Cora: CNPJ (14) ou CPF (11), só dígitos. */
+export function normalizeTaxIdForCora(document: string | null | undefined): string | null {
+  const digits = String(document ?? '').replace(/\D/g, '');
+  if (digits.length === 14 || digits.length === 11) return digits;
+  return null;
+}
+
+/** Contratos considerados na sincronização Cora ← CRM (Supabase). */
+export const CORA_SYNC_CONTRACT_STATUSES = ['active', 'suspended'] as const;
+
+export const CORA_SYNC_SOURCE_LABEL =
+  'Supabase — tabelas public.contracts (status ativo ou suspenso, com client_id) e public.clients (dados do titular).';
+
+export interface SyncEmpresasFromCRMResult {
+  inserted: number;
+  totalAfter: number;
+  contractsRows: number;
+  fonte: string;
+  skipped: {
+    sem_cliente: number;
+    sem_documento: number;
+    documento_invalido: number;
+    ja_cadastrado_cora: number;
+    documento_duplicado_no_lote: number;
+  };
+  /** Até 12 linhas explicando ignorados (amostra) */
+  skippedSamples: string[];
+  /** Nomes dos clientes inseridos nesta execução (amostra) */
+  insertedNames: string[];
+}
+
 export interface CoraConfig {
   chave: string;
   valor: Record<string, unknown> | null;
@@ -280,39 +311,76 @@ export function useSyncEmpresasFromCRM() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async () => {
-      // 1. Fetch active clients with active contracts
+    mutationFn: async (): Promise<SyncEmpresasFromCRMResult> => {
+      const skipped = {
+        sem_cliente: 0,
+        sem_documento: 0,
+        documento_invalido: 0,
+        ja_cadastrado_cora: 0,
+        documento_duplicado_no_lote: 0,
+      };
+      const skippedSamples: string[] = [];
+      const pushSample = (line: string) => {
+        if (skippedSamples.length < 12) skippedSamples.push(line);
+      };
+
       const { data: contractsData, error: contractsError } = await supabase
         .from('contracts')
         .select('client_id, monthly_value, billing_day, clients(id, name, document, phone, email)')
-        .eq('status', 'active')
-        .not('client_id', 'is', null);
+        .in('status', [...CORA_SYNC_CONTRACT_STATUSES])
+        .not('client_id', 'is', null)
+        .order('updated_at', { ascending: false });
       if (contractsError) throw contractsError;
 
-      // 2. Fetch existing cora_empresas CNPJs
       const { data: existing, error: existingError } = await supabase
         .from('cora_empresas')
         .select('cnpj');
       if (existingError) throw existingError;
 
-      const existingCnpjs = new Set((existing || []).map(e => e.cnpj.replace(/\D/g, '')));
+      const existingDocs = new Set((existing || []).map(e => String(e.cnpj || '').replace(/\D/g, '')));
 
-      // 3. Build new entries (skip duplicates by CNPJ)
       const newEntries: CoraEmpresaFormData[] = [];
       const seen = new Set<string>();
+      const insertedNames: string[] = [];
 
       for (const contract of contractsData || []) {
-        const client = contract.clients as any;
-        if (!client?.document) continue;
-        const cnpjClean = client.document.replace(/\D/g, '');
-        if (cnpjClean.length !== 14) continue; // skip CPFs
-        if (existingCnpjs.has(cnpjClean) || seen.has(cnpjClean)) continue;
-        seen.add(cnpjClean);
+        const client = contract.clients as { id?: string; name?: string; document?: string; phone?: string; email?: string } | null;
+        const nome = client?.name || '(sem nome)';
+
+        if (!client?.id) {
+          skipped.sem_cliente += 1;
+          pushSample(`${nome}: contrato sem dados do cliente (join)`);
+          continue;
+        }
+        if (!client.document?.trim()) {
+          skipped.sem_documento += 1;
+          pushSample(`${nome}: cliente sem documento no cadastro`);
+          continue;
+        }
+
+        const docClean = normalizeTaxIdForCora(client.document);
+        if (!docClean) {
+          skipped.documento_invalido += 1;
+          const digits = String(client.document).replace(/\D/g, '');
+          pushSample(`${nome}: documento com ${digits.length} dígitos (aceitos: CPF 11 ou CNPJ 14)`);
+          continue;
+        }
+
+        if (existingDocs.has(docClean)) {
+          skipped.ja_cadastrado_cora += 1;
+          continue;
+        }
+        if (seen.has(docClean)) {
+          skipped.documento_duplicado_no_lote += 1;
+          pushSample(`${nome}: mesmo documento já incluído a partir de outro contrato`);
+          continue;
+        }
+        seen.add(docClean);
 
         newEntries.push({
           client_id: client.id,
           client_name: client.name,
-          cnpj: cnpjClean,
+          cnpj: docClean,
           telefone: client.phone || '',
           email: client.email || '',
           dia_vencimento: contract.billing_day || 15,
@@ -320,13 +388,21 @@ export function useSyncEmpresasFromCRM() {
           forma_envio: 'WHATSAPP',
           is_active: true,
         });
+        if (insertedNames.length < 20) insertedNames.push(client.name || nome);
       }
 
       if (newEntries.length === 0) {
-        return { inserted: 0, total: existingCnpjs.size };
+        return {
+          inserted: 0,
+          totalAfter: existingDocs.size,
+          contractsRows: (contractsData || []).length,
+          fonte: CORA_SYNC_SOURCE_LABEL,
+          skipped,
+          skippedSamples,
+          insertedNames,
+        };
       }
 
-      // 4. Insert in batches of 50
       let inserted = 0;
       for (let i = 0; i < newEntries.length; i += 50) {
         const batch = newEntries.slice(i, i + 50);
@@ -335,15 +411,18 @@ export function useSyncEmpresasFromCRM() {
         inserted += batch.length;
       }
 
-      return { inserted, total: existingCnpjs.size + inserted };
+      return {
+        inserted,
+        totalAfter: existingDocs.size + inserted,
+        contractsRows: (contractsData || []).length,
+        fonte: CORA_SYNC_SOURCE_LABEL,
+        skipped,
+        skippedSamples,
+        insertedNames,
+      };
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cora_empresas'] });
-      if (result.inserted === 0) {
-        toast({ title: 'Nenhuma nova empresa para sincronizar', description: `${result.total} empresas já cadastradas.` });
-      } else {
-        toast({ title: `${result.inserted} empresas sincronizadas!`, description: `Total: ${result.total} empresas no Cora.` });
-      }
     },
     onError: (error: Error) => {
       toast({ title: 'Erro ao sincronizar empresas', description: error.message, variant: 'destructive' });
