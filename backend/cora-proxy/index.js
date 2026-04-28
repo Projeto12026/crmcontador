@@ -509,9 +509,26 @@ async function loadGclickCredentials() {
   const stored = cloneDb.getGclickSettingJson('gclick_credentials');
   appKey = stored?.app_key || appKey;
   appSecret = stored?.app_secret || appSecret;
+  if (appKey && appSecret) return { appKey, appSecret };
+
+  // Mesmo fallback usado pela rotina de Folha (Edge Function sync-gclick-obligations).
+  // Evita depender do sync-clone para a VPS enxergar credenciais já salvas em Configurações.
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'gclick_credentials')
+      .maybeSingle();
+
+    if (!error && data?.value && typeof data.value === 'object') {
+      appKey = data.value.app_key || data.value.client_id || appKey;
+      appSecret = data.value.app_secret || data.value.client_secret || appSecret;
+    }
+  }
 
   if (!appKey || !appSecret) {
-    throw new Error('Credenciais GClick não configuradas. Defina GCLICK_APP_KEY/GCLICK_APP_SECRET ou rode sync-clone para importar settings.gclick_credentials para o SQLite da VPS.');
+    throw new Error('Credenciais GClick não configuradas. Configure em Configurações > G-Click ou defina GCLICK_APP_KEY/GCLICK_APP_SECRET no backend.');
   }
   return { appKey, appSecret };
 }
