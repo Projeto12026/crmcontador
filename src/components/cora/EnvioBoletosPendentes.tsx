@@ -370,7 +370,11 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
 
         if (!response.ok) {
           const msg = sendResult?.error || sendResult?.message || sendResult?.details || `Erro HTTP ${response.status}`;
-          console.error(`[Cora] Erro ${response.status}:`, sendResult);
+          // Log mensagem legível (DevTools costuma mostrar "Object" sem expandir)
+          console.error(
+            `[Cora] process-boleto-complete HTTP ${response.status}:`,
+            typeof msg === 'string' ? msg : JSON.stringify(sendResult ?? {}),
+          );
           throw new Error(msg);
         }
 

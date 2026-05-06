@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Plus, Search, Edit, Trash2, Loader2, Building2, Mail, Phone, Ban, UserX } from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useUserRole';
 import { BulkImportClientsPanel } from '@/components/clients/BulkImportClientsPanel';
@@ -68,7 +67,6 @@ export function ClientsPage() {
     notes: '',
     status: 'active',
     acquisition_source: undefined,
-    envia_via_gclick: false,
   });
   const [statusFilter, setStatusFilter] = useState<ClientStatus | 'all'>('all');
 
@@ -109,7 +107,6 @@ export function ClientsPage() {
       notes: '',
       status: 'active',
       acquisition_source: undefined,
-      envia_via_gclick: false,
     });
     setIsOpen(true);
   };
@@ -130,7 +127,6 @@ export function ClientsPage() {
       notes: client.notes || '',
       status: client.status || 'active',
       acquisition_source: client.acquisition_source || undefined,
-      envia_via_gclick: client.envia_via_gclick || false,
     });
     setIsOpen(true);
   };
@@ -239,11 +235,6 @@ export function ClientsPage() {
                       <Phone className="h-3 w-3" />
                       {client.phone}
                     </div>
-                  )}
-                  {client.envia_via_gclick && (
-                    <Badge variant="secondary" className="w-fit">
-                      Envia via Gclick
-                    </Badge>
                   )}
                 </div>
                 <div className="mt-4 flex gap-2">
@@ -394,19 +385,6 @@ export function ClientsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <div>
-                <Label htmlFor="envia_via_gclick">Envia via Gclick</Label>
-                <p className="text-xs text-muted-foreground">
-                  Habilita o cliente para sincronização e envio de guias INSS/FGTS via WhatsApp.
-                </p>
-              </div>
-              <Switch
-                id="envia_via_gclick"
-                checked={!!formData.envia_via_gclick}
-                onCheckedChange={(checked) => setFormData({ ...formData, envia_via_gclick: checked })}
-              />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>

@@ -36,7 +36,6 @@ import {
   Loader2,
   Receipt,
   Wallet,
-  SendHorizontal,
 } from 'lucide-react';
 
 interface NavItem {
@@ -59,7 +58,6 @@ const navItems: NavItem[] = [
   { label: 'Caixa Nescon', href: '/financeiro-nescon', icon: <Wallet className="h-5 w-5 shrink-0" /> },
   { label: 'Precificação', href: '/precificacao', icon: <Calculator className="h-5 w-5 shrink-0" /> },
   { label: 'Cora', href: '/cora', icon: <Receipt className="h-5 w-5 shrink-0" /> },
-  { label: 'GClick WhatsApp', href: '/gclick-whatsapp', icon: <SendHorizontal className="h-5 w-5 shrink-0" /> },
 ];
 
 interface AppLayoutProps {

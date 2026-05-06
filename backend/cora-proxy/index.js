@@ -1042,9 +1042,11 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
       await new Promise((r) => setTimeout(r, 5000));
     } catch (pdfErr) {
       console.error('Erro ao enviar PDF:', pdfErr);
+      const pdfMsg =
+        pdfErr instanceof Error ? pdfErr.message : String(pdfErr || '');
       return res.status(500).json({
         success: false,
-        error: 'Boleto não encontrado/emitido.',
+        error: pdfMsg || 'Falha ao obter ou enviar o PDF do boleto.',
       });
     }
 

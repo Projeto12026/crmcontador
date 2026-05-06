@@ -464,7 +464,7 @@ export function syncFromSupabase(supabase) {
     supabase.from('cora_message_templates').select('id, template_key, message_body, is_active'),
     supabase.from('cora_config').select('chave, valor, updated_at'),
     supabase.from('cora_envios').select('id, empresa_id, boleto_id, competencia_mes, competencia_ano, canal, sucesso, detalhe, tipo_envio, created_at'),
-    supabase.from('clients').select('id, name, document, phone, envia_via_gclick'),
+    supabase.from('clients').select('id, name, document, phone'),
     supabase.from('gclick_sync_config').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('settings').select('key, value').eq('key', 'gclick_credentials').maybeSingle(),
   ]).then(async ([r1, r2, r3, r4, r5, r6, r7, r8]) => {
@@ -534,13 +534,8 @@ export function syncFromSupabase(supabase) {
         VALUES (?, ?, ?, ?, ?)
       `);
       for (const c of gClients) {
-        insGCli.run(
-          c.id,
-          c.name ?? null,
-          c.document ?? null,
-          c.phone ?? null,
-          c.envia_via_gclick ? 1 : 0,
-        );
+        // CRM não expõe mais envio seletivo por cliente; clone trata todos como habilitados.
+        insGCli.run(c.id, c.name ?? null, c.document ?? null, c.phone ?? null, 1);
       }
       counts.gclick_clients = gClients.length;
 

@@ -40,7 +40,6 @@ export interface Client {
   is_active: boolean;
   status: ClientStatus;
   acquisition_source: AcquisitionChannel | null;
-  envia_via_gclick: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -390,7 +389,6 @@ export interface ClientFormData {
   notes?: string;
   status?: ClientStatus;
   acquisition_source?: AcquisitionChannel;
-  envia_via_gclick?: boolean;
 }
 
 export interface TaskFormData {

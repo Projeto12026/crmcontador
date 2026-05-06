@@ -294,7 +294,6 @@ export type Database = {
           document: string | null
           document_type: string | null
           email: string | null
-          envia_via_gclick: boolean
           id: string
           is_active: boolean | null
           name: string
@@ -316,7 +315,6 @@ export type Database = {
           document?: string | null
           document_type?: string | null
           email?: string | null
-          envia_via_gclick?: boolean
           id?: string
           is_active?: boolean | null
           name: string
@@ -338,7 +336,6 @@ export type Database = {
           document?: string | null
           document_type?: string | null
           email?: string | null
-          envia_via_gclick?: boolean
           id?: string
           is_active?: boolean | null
           name?: string
