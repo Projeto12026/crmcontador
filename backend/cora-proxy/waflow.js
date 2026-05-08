@@ -1,19 +1,21 @@
 /**
- * WaFlow / MoltFlow API v2 (Bearer + session_id).
+ * Lion CRM WhatsApp API v2.0 (Bearer + endpoint único `webhook-incoming.php`).
+ *
+ * Mantemos o nome "WaFlow" externamente apenas como rótulo do "provedor alternativo"
+ * dentro do roteador (`whatsapp-send-router.js`). O protocolo real é o documentado em
+ * https://documenter.getpostman.com/view/43709792/2sB3dTuoJe.
  */
 
-const DEFAULT_BASE = 'https://apiv2.waiflow.app';
 const MAX_RETRY = 4;
 const RETRY_MS = 4000;
 
-export function sanitizeWaFlowCreds(apiUrl, token, sessionId) {
+export function sanitizeWaFlowCreds(apiUrl, token) {
   const base = String(apiUrl ?? '')
     .trim()
     .replace(/\/+$/, '');
   return {
-    apiUrl: base || DEFAULT_BASE,
+    apiUrl: base,
     token: String(token ?? '').trim(),
-    sessionId: String(sessionId ?? '').trim(),
   };
 }
 
@@ -25,7 +27,9 @@ function phoneDigitsBrazil(phone) {
 
 function isTransientWaFlowErr(err) {
   const s = err?.status;
-  if (s === 401 || s === 403 || s === 404 || s === 400) return false;
+  // 400 (campo inválido), 401 (token), 403 (API desabilitada), 404 (rota errada)
+  // são definitivos. 429/5xx são transitórios.
+  if (s === 400 || s === 401 || s === 403 || s === 404) return false;
   if ([500, 502, 503, 504, 429].includes(s)) return true;
   const msg = String(err?.message || '').toLowerCase();
   return /timeout|econnreset|fetch failed|socket|temporar/i.test(msg);
@@ -39,7 +43,7 @@ async function withRetry(fn, label) {
     } catch (e) {
       last = e;
       if (isTransientWaFlowErr(e) && a < MAX_RETRY) {
-        console.warn(`[WaFlow ${label}] retry ${a}/${MAX_RETRY}:`, e.message?.slice(0, 100));
+        console.warn(`[LionCRM ${label}] retry ${a}/${MAX_RETRY}:`, e.message?.slice(0, 100));
         await new Promise((r) => setTimeout(r, RETRY_MS));
         continue;
       }
@@ -49,18 +53,19 @@ async function withRetry(fn, label) {
   throw last;
 }
 
-async function messagesSend(creds, payload) {
-  const { apiUrl, token, sessionId } = creds;
-  if (!token || !sessionId) throw new Error('WaFlow: token ou session_id ausente');
+async function webhookSend(creds, payload) {
+  const { apiUrl, token } = creds;
+  if (!apiUrl) throw new Error('Lion CRM: URL da API não configurada');
+  if (!token) throw new Error('Lion CRM: token não configurado');
 
-  const response = await fetch(`${apiUrl}/api/v2/messages/send`, {
+  const response = await fetch(`${apiUrl}/webhook-incoming.php`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ session_id: sessionId, ...payload }),
+    body: JSON.stringify(payload),
   });
 
   const text = await response.text();
@@ -68,68 +73,84 @@ async function messagesSend(creds, payload) {
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    throw new Error(`WaFlow resposta não-JSON (HTTP ${response.status}): ${text.slice(0, 200)}`);
+    const err = new Error(
+      `Lion CRM resposta não-JSON (HTTP ${response.status}): ${text.slice(0, 200)}`,
+    );
+    err.status = response.status;
+    throw err;
   }
-  if (!response.ok) {
-    const err = new Error(data.message || data.error || `WaFlow HTTP ${response.status}`);
+  if (!response.ok || data?.success === false) {
+    const err = new Error(data.error || data.message || `Lion CRM HTTP ${response.status}`);
     err.status = response.status;
     throw err;
   }
   return data;
 }
 
-export async function probeWaFlowSession(creds, timeoutMs = 5000) {
-  try {
-    const { apiUrl, token, sessionId } = creds;
-    if (!token || !sessionId) return { ok: false, error: 'Credenciais incompletas' };
-
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), timeoutMs);
-    const resp = await fetch(`${apiUrl}/api/v2/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'GET',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      signal: ac.signal,
-    });
-    clearTimeout(t);
-
-    const body = await resp.json().catch(() => ({}));
-    const okHttp = resp.ok && resp.status === 200;
-    const st =
-      body?.status || body?.data?.status || body?.session?.status || body?.state || '';
-    let working = okHttp;
-    if (typeof st === 'string') {
-      working = okHttp && ['WORKING', 'working', 'CONNECTED', 'connected'].includes(st);
-      if (/scan|stopped|fail|disconnect/i.test(st)) working = false;
-    }
-    return { ok: working, httpStatus: resp.status, rawStatus: typeof st === 'string' ? st : '' };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e.name === 'AbortError' ? `timeout ${timeoutMs}ms` : e.message,
-    };
+/**
+ * Healthcheck "leve": apenas confirma que credenciais foram preenchidas. A API do Lion CRM
+ * não expõe endpoint público de status; selecionar o provedor por probe positivo geraria
+ * tráfego sem retorno útil. O failover real é feito reagindo a erros do Wascript.
+ */
+export function probeWaFlowSession(creds) {
+  const { apiUrl, token } = creds;
+  if (!apiUrl || !token) {
+    return Promise.resolve({ ok: false, error: 'Credenciais incompletas' });
   }
+  return Promise.resolve({ ok: true });
 }
 
 export async function sendWaFlowText(phone, message, creds) {
-  const phoneDigits = phoneDigitsBrazil(phone);
-  return withRetry(async () => {
-    await messagesSend(creds, { phone: phoneDigits, message });
-  }, 'sendText');
+  const to = phoneDigitsBrazil(phone);
+  return withRetry(
+    () =>
+      webhookSend(creds, {
+        action: 'send_message',
+        to,
+        message: String(message ?? ''),
+      }),
+    'sendText',
+  );
 }
 
-/** PDF por URL pública (media_url). */
+/** PDF por URL pública (`send_document` com campo `url`). */
 export async function sendWaFlowPdfFromUrl(phone, mediaUrl, filename, caption, creds) {
-  const phoneDigits = phoneDigitsBrazil(phone);
-  const msg = caption || filename || 'Documento';
+  const to = phoneDigitsBrazil(phone);
   if (!mediaUrl || typeof mediaUrl !== 'string') {
-    throw new Error('WaFlow: media_url do PDF obrigatória');
+    throw new Error('Lion CRM: URL pública do PDF obrigatória para send_document');
   }
+  return withRetry(
+    () =>
+      webhookSend(creds, {
+        action: 'send_document',
+        to,
+        url: mediaUrl.trim(),
+        filename: filename || 'documento.pdf',
+        caption: caption || '',
+      }),
+    'sendPdfUrl',
+  );
+}
 
-  return withRetry(async () => {
-    await messagesSend(creds, {
-      phone: phoneDigits,
-      message: msg,
-      media_url: mediaUrl.trim(),
-    });
-  }, 'sendPdf');
+/**
+ * PDF por buffer (`send_file_base64`). Útil quando não há URL pública do boleto e
+ * já temos o conteúdo em memória — é o caminho do failover real.
+ */
+export async function sendWaFlowPdfFromBuffer(phone, buffer, filename, caption, creds) {
+  const to = phoneDigitsBrazil(phone);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('Lion CRM: buffer do PDF vazio');
+  }
+  const base64 = `data:application/pdf;base64,${buffer.toString('base64')}`;
+  return withRetry(
+    () =>
+      webhookSend(creds, {
+        action: 'send_file_base64',
+        to,
+        base64,
+        filename: filename || 'documento.pdf',
+        caption: caption || '',
+      }),
+    'sendPdfBase64',
+  );
 }

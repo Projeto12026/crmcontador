@@ -161,7 +161,6 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       token?: string;
       waflow_api_url?: string;
       waflow_api_token?: string;
-      waflow_session_id?: string;
       provider_mode?: string;
       failover_enabled?: unknown;
     };
@@ -178,7 +177,6 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       wascriptToken: String(v.token ?? ''),
       waflowApiUrl: String(v.waflow_api_url ?? ''),
       waflowApiToken: String(v.waflow_api_token ?? ''),
-      waflowSessionId: String(v.waflow_session_id ?? ''),
       whatsappProviderMode: String(v.provider_mode ?? '').trim(),
       ...(failoverBool ? { whatsappFailoverEnabled: true as const } : {}),
     };

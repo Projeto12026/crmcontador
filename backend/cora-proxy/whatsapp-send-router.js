@@ -1,9 +1,19 @@
 /**
- * Escolha Wascript vs WaFlow + failover opcional (CRM Contador cora-proxy).
+ * Escolha Wascript vs Lion CRM API + failover opcional (CRM Contador cora-proxy).
+ *
+ * Internamente o segundo provedor ainda é referenciado como "waflow" por compatibilidade
+ * com chaves já salvas em `cora_config.whatsapp` (waflow_api_url, waflow_api_token).
+ * O protocolo real chamado é o Lion CRM v2 (`webhook-incoming.php`).
  */
 
 import * as cloneDb from './clone-db.js';
-import { sanitizeWaFlowCreds, probeWaFlowSession, sendWaFlowText, sendWaFlowPdfFromUrl } from './waflow.js';
+import {
+  sanitizeWaFlowCreds,
+  probeWaFlowSession,
+  sendWaFlowText,
+  sendWaFlowPdfFromUrl,
+  sendWaFlowPdfFromBuffer,
+} from './waflow.js';
 
 const PROVIDER_WASCRIPT = 'wascript';
 const PROVIDER_WAFLOW = 'waflow';
@@ -35,7 +45,8 @@ function isTransientWascriptErr(err) {
 
 function isWaFlowTransientForFailover(err) {
   const s = err?.status;
-  if (s === 401 || s === 403 || s === 404 || s === 400) return false;
+  // 400/401/403/404 da Lion CRM são definitivos (token errado, API desabilitada, rota errada).
+  if (s === 400 || s === 401 || s === 403 || s === 404) return false;
   return [500, 502, 503, 504, 429].includes(s);
 }
 
@@ -60,7 +71,6 @@ export function buildWhatsappContext(body = {}) {
   const waflow = sanitizeWaFlowCreds(
     body.waflowApiUrl || v.waflow_api_url || process.env.WAFLOW_API_URL,
     body.waflowApiToken || v.waflow_api_token || process.env.WAFLOW_API_TOKEN,
-    body.waflowSessionId || v.waflow_session_id || process.env.WAFLOW_SESSION_ID
   );
 
   const providerMode = String(
@@ -109,7 +119,7 @@ async function chooseProvider(ctx) {
     return PROVIDER_WASCRIPT;
   }
   if (providerMode === 'waflow_only') {
-    if (!wf.token || !wf.sessionId) throw new Error('WaFlow não configurado (modo waflow_only).');
+    if (!wf.apiUrl || !wf.token) throw new Error('Lion CRM não configurado (modo waflow_only).');
     return PROVIDER_WAFLOW;
   }
 
@@ -117,16 +127,17 @@ async function chooseProvider(ctx) {
     return selectionCache.provider;
   }
 
+  // Em modo automático: probe só do Wascript (Lion CRM não expõe healthcheck público;
+  // probe positivo geraria tráfego sem retorno útil). Se o Wascript estiver fora,
+  // caímos no Lion CRM caso ele esteja preenchido.
   let picked = PROVIDER_WASCRIPT;
-  const [wp, fp] = await Promise.all([
-    ws.apiUrl && ws.token ? probeWascriptQuick(ws, 5000) : { ok: false },
-    wf.token && wf.sessionId ? probeWaFlowSession(wf, 5000) : { ok: false },
-  ]);
+  const wp =
+    ws.apiUrl && ws.token ? await probeWascriptQuick(ws, 5000) : { ok: false };
+  const wfReady = Boolean(wf.apiUrl && wf.token);
 
   if (wp.ok) picked = PROVIDER_WASCRIPT;
-  else if (fp.ok) picked = PROVIDER_WAFLOW;
+  else if (wfReady) picked = PROVIDER_WAFLOW;
   else if (ws.apiUrl && ws.token) picked = PROVIDER_WASCRIPT;
-  else if (wf.token && wf.sessionId) picked = PROVIDER_WAFLOW;
   else throw new Error('Nenhum provedor WhatsApp configurado.');
 
   selectionCache = { provider: picked, until: now + CACHE_TTL_MS };
@@ -143,7 +154,7 @@ async function invokeWithFailover(primary, failoverEnabled, hasWsc, hasWf, runne
       if (!hasWsc) throw new Error('Wascript não configurado');
       await runners.wascript();
     } else {
-      if (!hasWf) throw new Error('WaFlow não configurado');
+      if (!hasWf) throw new Error('Lion CRM não configurado');
       await runners.waflow();
     }
   };
@@ -167,7 +178,7 @@ async function invokeWithFailover(primary, failoverEnabled, hasWsc, hasWf, runne
 export async function sendTextRouted(phone, message, ctx, sendWascript) {
   const primary = await chooseProvider(ctx);
   const hasWsc = Boolean(ctx.wascript.apiUrl && ctx.wascript.token);
-  const hasWf = Boolean(ctx.waflow.token && ctx.waflow.sessionId);
+  const hasWf = Boolean(ctx.waflow.apiUrl && ctx.waflow.token);
 
   await invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
     wascript: () => sendWascript(ctx.wascript),
@@ -182,20 +193,23 @@ export async function sendTextRouted(phone, message, ctx, sendWascript) {
 export async function sendPdfRouted(phone, opts, ctx, sendWascriptPdf) {
   const primary = await chooseProvider(ctx);
   const hasWsc = Boolean(ctx.wascript.apiUrl && ctx.wascript.token);
-  const hasWf = Boolean(ctx.waflow.token && ctx.waflow.sessionId);
+  const hasWf = Boolean(ctx.waflow.apiUrl && ctx.waflow.token);
   const { pdfBuffer, pdfUrl, filename, caption } = opts;
 
   await invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
     wascript: () => sendWascriptPdf(phone, pdfBuffer, filename, caption, ctx.wascript),
     waflow: () => {
-      if (!pdfUrl) {
-        throw new Error(
-          'WaFlow exige URL pública do PDF (media_url). Obtenha payment_options.bank_slip.url na Cora.'
-        );
+      // Preferir URL pública (send_document) — economiza banda.
+      // Fallback para buffer base64 (send_file_base64) quando não há URL.
+      if (pdfUrl) {
+        return sendWaFlowPdfFromUrl(phone, pdfUrl, filename, caption || '', ctx.waflow);
       }
-      return sendWaFlowPdfFromUrl(phone, pdfUrl, filename, caption || '', ctx.waflow);
+      if (Buffer.isBuffer(pdfBuffer) && pdfBuffer.length > 0) {
+        return sendWaFlowPdfFromBuffer(phone, pdfBuffer, filename, caption || '', ctx.waflow);
+      }
+      throw new Error('Lion CRM: nem pdfUrl nem pdfBuffer disponíveis para envio.');
     },
   });
 }
 
-export { PROVIDER_WASCRIPT, PROVIDER_WAFLOW };
+export { PROVIDER_WASCRIPT, PROVIDER_WAFLOW, probeWaFlowSession };

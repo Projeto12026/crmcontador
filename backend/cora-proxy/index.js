@@ -718,7 +718,6 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
     wascriptToken: whatsappCfg.token,
     waflowApiUrl: whatsappCfg.waflow_api_url,
     waflowApiToken: whatsappCfg.waflow_api_token,
-    waflowSessionId: whatsappCfg.waflow_session_id,
     whatsappProviderMode: whatsappCfg.provider_mode,
     whatsappFailoverEnabled: whatsappCfg.failover_enabled,
   });
@@ -1358,7 +1357,6 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         wascriptToken,
         waflowApiUrl: whatsappVal.waflow_api_url || process.env.WAFLOW_API_URL,
         waflowApiToken: whatsappVal.waflow_api_token || process.env.WAFLOW_API_TOKEN,
-        waflowSessionId: whatsappVal.waflow_session_id || process.env.WAFLOW_SESSION_ID,
         whatsappProviderMode: whatsappVal.provider_mode || process.env.WHATSAPP_PROVIDER_MODE,
         whatsappFailoverEnabled: whatsappVal.failover_enabled ?? process.env.WHATSAPP_FAILOVER_ENABLED,
       };

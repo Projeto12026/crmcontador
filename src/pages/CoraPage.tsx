@@ -856,7 +856,6 @@ function ParametrosTab() {
     token: '',
     waflow_api_url: '',
     waflow_api_token: '',
-    waflow_session_id: '',
     provider_mode: 'wascript_only',
     failover_enabled: false,
   });
@@ -885,7 +884,6 @@ function ParametrosTab() {
         token: v.token || '',
         waflow_api_url: v.waflow_api_url || '',
         waflow_api_token: v.waflow_api_token || '',
-        waflow_session_id: v.waflow_session_id || '',
         provider_mode:
           typeof v.provider_mode === 'string' && v.provider_mode.trim() !== ''
             ? v.provider_mode
@@ -1019,12 +1017,12 @@ function ParametrosTab() {
         </Card>
       </div>
 
-      {/* WhatsApp (Wascript + WaFlow) */}
+      {/* WhatsApp (Wascript + Lion CRM API alternativa) */}
       <Card>
           <CardHeader>
             <CardTitle className="text-lg">WhatsApp</CardTitle>
             <CardDescription>
-              Wascript ou WaFlow (MoltFlow v2): escolha o modo e opcionalmente ative failover após erro transitório no provedor principal.
+              Wascript ou Lion CRM API (CRM WhatsApp API v2.0): escolha o modo e opcionalmente ative failover após erro transitório no provedor principal.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -1041,7 +1039,7 @@ function ParametrosTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="wascript_only">Somente Wascript</SelectItem>
-                  <SelectItem value="waflow_only">Somente WaFlow</SelectItem>
+                  <SelectItem value="waflow_only">Somente Lion CRM API</SelectItem>
                   <SelectItem value="auto_prefer_wascript">Automático (preferir Wascript; probe em cache ~45 s)</SelectItem>
                 </SelectContent>
               </Select>
@@ -1088,19 +1086,22 @@ function ParametrosTab() {
                 </div>
               </div>
               <div className="space-y-4">
-                <p className="text-sm font-medium">WaFlow (API v2)</p>
+                <p className="text-sm font-medium">Lion CRM API (alternativa)</p>
                 <div className="space-y-2">
-                  <Label>URL da API WaFlow</Label>
+                  <Label>URL da API Lion CRM</Label>
                   <Input
                     value={whatsappConfig.waflow_api_url}
                     onChange={(e) =>
                       setWhatsappConfig({ ...whatsappConfig, waflow_api_url: e.target.value })
                     }
-                    placeholder="https://..."
+                    placeholder="https://seu-dominio.com/api"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    URL base do servidor Lion CRM. O endpoint chamado é <code className="text-xs">/webhook-incoming.php</code>.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Token WaFlow</Label>
+                  <Label>Token de API</Label>
                   <Input
                     type="password"
                     value={whatsappConfig.waflow_api_token}
@@ -1108,17 +1109,8 @@ function ParametrosTab() {
                       setWhatsappConfig({ ...whatsappConfig, waflow_api_token: e.target.value })
                     }
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>Session ID WhatsApp</Label>
-                  <Input
-                    value={whatsappConfig.waflow_session_id}
-                    onChange={(e) =>
-                      setWhatsappConfig({ ...whatsappConfig, waflow_session_id: e.target.value })
-                    }
-                  />
                   <p className="text-xs text-muted-foreground">
-                    Para PDF pelo WaFlow, a URL do boleto precisa ser acessível externamente pela API (<code className="text-xs">media_url</code>).
+                    Verifique se a opção <strong>Habilitar API</strong> está ativa no painel da extensão Lion CRM. PDFs são enviados preferencialmente via URL pública (<code className="text-xs">send_document</code>); quando indisponível, usa base64 (<code className="text-xs">send_file_base64</code>).
                   </p>
                 </div>
               </div>
