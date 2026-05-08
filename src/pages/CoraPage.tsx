@@ -48,6 +48,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -853,6 +854,11 @@ function ParametrosTab() {
   const [whatsappConfig, setWhatsappConfig] = useState({
     api_url: '',
     token: '',
+    waflow_api_url: '',
+    waflow_api_token: '',
+    waflow_session_id: '',
+    provider_mode: 'wascript_only',
+    failover_enabled: false,
   });
 
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
@@ -874,7 +880,18 @@ function ParametrosTab() {
     }
     if (wpp?.valor) {
       const v = wpp.valor as any;
-      setWhatsappConfig({ api_url: v.api_url || '', token: v.token || '' });
+      setWhatsappConfig({
+        api_url: v.api_url || '',
+        token: v.token || '',
+        waflow_api_url: v.waflow_api_url || '',
+        waflow_api_token: v.waflow_api_token || '',
+        waflow_session_id: v.waflow_session_id || '',
+        provider_mode:
+          typeof v.provider_mode === 'string' && v.provider_mode.trim() !== ''
+            ? v.provider_mode
+            : 'wascript_only',
+        failover_enabled: v.failover_enabled === true || String(v.failover_enabled).toLowerCase() === 'true',
+      });
     }
     setConfigLoaded(true);
   }, [configs, configLoaded]);
@@ -972,7 +989,7 @@ function ParametrosTab() {
         </CardContent>
       </Card>
 
-      {/* API & WhatsApp configs */}
+      {/* API Cora */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -1000,26 +1017,119 @@ function ParametrosTab() {
             <Button onClick={saveApiConfig} disabled={upsertConfig.isPending}>Salvar Configurações API</Button>
           </CardContent>
         </Card>
+      </div>
 
-        <Card>
+      {/* WhatsApp (Wascript + WaFlow) */}
+      <Card>
           <CardHeader>
             <CardTitle className="text-lg">WhatsApp</CardTitle>
-            <CardDescription>Configurações para envio de boletos via WhatsApp.</CardDescription>
+            <CardDescription>
+              Wascript ou WaFlow (MoltFlow v2): escolha o modo e opcionalmente ative failover após erro transitório no provedor principal.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>URL da API WhatsApp</Label>
-              <Input value={whatsappConfig.api_url} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, api_url: e.target.value })} placeholder="https://api.wascript.com.br/..." />
+              <Label>Modo de envio</Label>
+              <Select
+                value={whatsappConfig.provider_mode}
+                onValueChange={(value) =>
+                  setWhatsappConfig({ ...whatsappConfig, provider_mode: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wascript_only">Somente Wascript</SelectItem>
+                  <SelectItem value="waflow_only">Somente WaFlow</SelectItem>
+                  <SelectItem value="auto_prefer_wascript">Automático (preferir Wascript; probe em cache ~45 s)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Token WhatsApp</Label>
-              <Input type="password" value={whatsappConfig.token} onChange={(e) => setWhatsappConfig({ ...whatsappConfig, token: e.target.value })} />
+            <div className="flex items-center gap-3 rounded-lg border border-border p-4">
+              <Switch
+                id="wa-failover"
+                checked={whatsappConfig.failover_enabled}
+                onCheckedChange={(checked) =>
+                  setWhatsappConfig({ ...whatsappConfig, failover_enabled: !!checked })
+                }
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor="wa-failover" className="cursor-pointer">
+                  Failover no mesmo envio
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Se o provedor escolhido falhar por erro transitório (ex.: 5xx / 429), tenta o outro na mesma requisição.
+                </p>
+              </div>
             </div>
-            <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>Salvar Configurações WhatsApp</Button>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-4">
+                <p className="text-sm font-medium">Wascript</p>
+                <div className="space-y-2">
+                  <Label>URL da API Wascript</Label>
+                  <Input
+                    value={whatsappConfig.api_url}
+                    onChange={(e) =>
+                      setWhatsappConfig({ ...whatsappConfig, api_url: e.target.value })
+                    }
+                    placeholder="https://api.wascript.com.br/..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Token Wascript</Label>
+                  <Input
+                    type="password"
+                    value={whatsappConfig.token}
+                    onChange={(e) =>
+                      setWhatsappConfig({ ...whatsappConfig, token: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-4">
+                <p className="text-sm font-medium">WaFlow (API v2)</p>
+                <div className="space-y-2">
+                  <Label>URL da API WaFlow</Label>
+                  <Input
+                    value={whatsappConfig.waflow_api_url}
+                    onChange={(e) =>
+                      setWhatsappConfig({ ...whatsappConfig, waflow_api_url: e.target.value })
+                    }
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Token WaFlow</Label>
+                  <Input
+                    type="password"
+                    value={whatsappConfig.waflow_api_token}
+                    onChange={(e) =>
+                      setWhatsappConfig({ ...whatsappConfig, waflow_api_token: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Session ID WhatsApp</Label>
+                  <Input
+                    value={whatsappConfig.waflow_session_id}
+                    onChange={(e) =>
+                      setWhatsappConfig({ ...whatsappConfig, waflow_session_id: e.target.value })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Para PDF pelo WaFlow, a URL do boleto precisa ser acessível externamente pela API (<code className="text-xs">media_url</code>).
+                  </p>
+                </div>
+              </div>
+            </div>
+            <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>
+              Salvar Configurações WhatsApp
+            </Button>
           </CardContent>
-        </Card>
+      </Card>
 
-        <Card className="md:col-span-2">
+      <Card>
           <CardHeader>
             <CardTitle className="text-lg">Arquitetura da Integração</CardTitle>
           </CardHeader>
@@ -1031,8 +1141,7 @@ function ParametrosTab() {
             <p><strong>4. Cache:</strong> Boletos são armazenados na tabela <code>cora_boletos</code> para consulta rápida sem chamar a API toda vez.</p>
             <p><strong>5. Envio:</strong> Busca boleto por CNPJ + competência, baixa PDF, envia via WhatsApp/Email. Registra em <code>cora_envios</code>.</p>
           </CardContent>
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }

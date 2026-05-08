@@ -153,11 +153,34 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
     return '';
   }, [configs]);
 
-  const wascriptConfig = useMemo(() => {
+  /** Campos esperados pelo `buildWhatsappContext` no cora-proxy (body + fallback no clone). */
+  const whatsappApiPayload = useMemo(() => {
     const wpp = configs?.find(c => c.chave === 'whatsapp');
+    const v = ((wpp?.valor as Record<string, unknown>) || {}) as {
+      api_url?: string;
+      token?: string;
+      waflow_api_url?: string;
+      waflow_api_token?: string;
+      waflow_session_id?: string;
+      provider_mode?: string;
+      failover_enabled?: unknown;
+    };
+    const failover = v.failover_enabled;
+    const failoverBool =
+      failover === true ||
+      failover === 1 ||
+      String(failover ?? '')
+        .trim()
+        .toLowerCase() === 'true';
+
     return {
-      apiUrl: (wpp?.valor as any)?.api_url || '',
-      token: (wpp?.valor as any)?.token || '',
+      wascriptApiUrl: String(v.api_url ?? ''),
+      wascriptToken: String(v.token ?? ''),
+      waflowApiUrl: String(v.waflow_api_url ?? ''),
+      waflowApiToken: String(v.waflow_api_token ?? ''),
+      waflowSessionId: String(v.waflow_session_id ?? ''),
+      whatsappProviderMode: String(v.provider_mode ?? '').trim(),
+      ...(failoverBool ? { whatsappFailoverEnabled: true as const } : {}),
     };
   }, [configs]);
 
@@ -354,8 +377,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             invoiceId: empresa.boleto?.cora_invoice_id || undefined,
             mensagem,
             templateKey,
-            wascriptApiUrl: wascriptConfig.apiUrl,
-            wascriptToken: wascriptConfig.token,
+            ...whatsappApiPayload,
           }),
         });
 
@@ -496,8 +518,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
             },
             mensagem,
             templateKey,
-            wascriptApiUrl: wascriptConfig.apiUrl,
-            wascriptToken: wascriptConfig.token,
+            ...whatsappApiPayload,
           }),
         });
 

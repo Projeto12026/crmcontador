@@ -4,6 +4,7 @@ import https from 'node:https';
 import fs from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import * as cloneDb from './clone-db.js';
+import * as whatsappSendRouter from './whatsapp-send-router.js';
 
 const app = express();
 app.use(cors());
@@ -301,14 +302,6 @@ app.post('/api/cora/download-pdf', async (req, res) => {
 
 // ── WhatsApp via Wascript ────────────────────────────
 
-// Helper: get Wascript config from env or request body
-function getWascriptConfig(body = {}) {
-  return {
-    apiUrl: body.wascriptApiUrl || process.env.WASCRIPT_API_URL || '',
-    token: body.wascriptToken || process.env.WASCRIPT_TOKEN || '',
-  };
-}
-
 // Erros que indicam falha temporária (sessão/conexão) e vale tentar de novo
 function isTransientWascriptError(err) {
   const msg = (err && err.message) ? String(err.message) : '';
@@ -367,7 +360,12 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
       console.error(`[Wascript sendText] Resposta não-JSON (status ${response.status}):`, responseText.slice(0, 500));
       throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText.slice(0, 200)}`);
     }
-    if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+    if (!response.ok) {
+      const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
+      const er = new Error(errMsg);
+      er.status = response.status;
+      throw er;
+    }
     return data;
   }, ' sendText');
 }
@@ -405,7 +403,12 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
       console.error(`[Wascript sendFile] Resposta não-JSON (status ${response.status}):`, responseText2.slice(0, 500));
       throw new Error(`Wascript retornou status ${response.status} com resposta não-JSON: ${responseText2.slice(0, 200)}`);
     }
-    if (!response.ok) throw new Error(data.error || data.message || `Wascript HTTP ${response.status}`);
+    if (!response.ok) {
+      const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
+      const er = new Error(errMsg);
+      er.status = response.status;
+      throw er;
+    }
     return data;
   }, ' sendFile');
 }
@@ -710,9 +713,14 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
 
   const whatsappRow = cloneDb.getConfig('whatsapp');
   const whatsappCfg = whatsappRow?.valor || {};
-  const wascriptConfig = getWascriptConfig({
+  const guidesCtx = whatsappSendRouter.buildWhatsappContext({
     wascriptApiUrl: whatsappCfg.api_url,
     wascriptToken: whatsappCfg.token,
+    waflowApiUrl: whatsappCfg.waflow_api_url,
+    waflowApiToken: whatsappCfg.waflow_api_token,
+    waflowSessionId: whatsappCfg.waflow_session_id,
+    whatsappProviderMode: whatsappCfg.provider_mode,
+    whatsappFailoverEnabled: whatsappCfg.failover_enabled,
   });
 
   let sent = 0;
@@ -763,12 +771,28 @@ async function sendGclickGuidesInternal({ competenciaMes, competenciaAno, jobIds
       const arr = await pdfResp.arrayBuffer();
       const buffer = Buffer.from(arr);
       const filename = job.arquivo_nome || `${job.guide_type}_${String(job.competencia_mes).padStart(2, '0')}-${job.competencia_ano}.pdf`;
-      await sendWhatsappPdf(phone, buffer, filename, '', wascriptConfig);
+      await whatsappSendRouter.sendPdfRouted(
+        phone,
+        {
+          pdfBuffer: buffer,
+          pdfUrl: job.arquivo_url,
+          filename,
+          caption: '',
+        },
+        guidesCtx,
+        (ph, buf, fname, caption, wsConfig) => sendWhatsappPdf(ph, buf, fname, caption, wsConfig),
+      );
 
       // Envia mensagem curta de contexto após o documento.
       // Se falhar, não rebaixa o envio para evitar reenvio duplicado do PDF.
       try {
-        await sendWhatsappMessage(phone, buildDeliveryMessage(job), wascriptConfig);
+        const deliveryMsg = buildDeliveryMessage(job);
+        await whatsappSendRouter.sendTextRouted(
+          phone,
+          deliveryMsg,
+          guidesCtx,
+          (wsConfig) => sendWhatsappMessage(phone, deliveryMsg, wsConfig),
+        );
       } catch (messageError) {
         details.push({
           jobId: job.id,
@@ -907,15 +931,20 @@ app.post('/api/gclick/run-cycle', async (req, res) => {
 // ── Send reminder (text only) ──────────────────────
 app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res) => {
   try {
-    const { empresa, mensagem, wascriptApiUrl, wascriptToken } = req.body;
-    const wascriptConfig = getWascriptConfig({ wascriptApiUrl, wascriptToken });
+    const { empresa, mensagem } = req.body;
+    const ctx = whatsappSendRouter.buildWhatsappContext(req.body);
     const phone = empresa?.telefone;
     if (!phone || phone.replace(/\D/g, '').length < 10) {
       return res.status(400).json({ success: false, error: 'Telefone inválido' });
     }
     if (!mensagem) return res.status(400).json({ success: false, error: 'Mensagem vazia' });
 
-    await sendWhatsappMessage(phone, mensagem, wascriptConfig);
+    await whatsappSendRouter.sendTextRouted(
+      phone,
+      mensagem,
+      ctx,
+      (wsConfig) => sendWhatsappMessage(phone, mensagem, wsConfig)
+    );
     res.json({ success: true, message: 'Lembrete enviado' });
   } catch (error) {
     console.error('Erro send-reminder:', error);
@@ -926,8 +955,8 @@ app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res)
 // ── Process boleto complete (PDF + message) ─────────
 app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async (req, res) => {
   try {
-    const { empresa, competencia, invoiceId, mensagem, wascriptApiUrl, wascriptToken } = req.body;
-    const wascriptConfig = getWascriptConfig({ wascriptApiUrl, wascriptToken });
+    const { empresa, competencia, invoiceId, mensagem } = req.body;
+    const ctx = whatsappSendRouter.buildWhatsappContext(req.body);
     const phone = empresa?.telefone;
     if (!phone || phone.replace(/\D/g, '').length < 10) {
       return res.status(400).json({ success: false, error: 'Telefone inválido' });
@@ -1037,7 +1066,12 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
       const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
       const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
-      await sendWhatsappPdf(phone, pdfBuffer, filename, '', wascriptConfig);
+      await whatsappSendRouter.sendPdfRouted(
+        phone,
+        { pdfBuffer, pdfUrl, filename, caption: '' },
+        ctx,
+        (ph, buf, fname, caption, wsConfig) => sendWhatsappPdf(ph, buf, fname, caption, wsConfig)
+      );
       pdfSent = true;
       await new Promise((r) => setTimeout(r, 5000));
     } catch (pdfErr) {
@@ -1061,7 +1095,12 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
     // Enviar mensagem APENAS se o PDF tiver sido enviado com sucesso.
     if (mensagem) {
-      await sendWhatsappMessage(phone, mensagem, wascriptConfig);
+      await whatsappSendRouter.sendTextRouted(
+        phone,
+        mensagem,
+        ctx,
+        (wsConfig) => sendWhatsappMessage(phone, mensagem, wsConfig)
+      );
     }
 
     res.json({ success: true, pdfSent: true, messageSent: !!mensagem });
@@ -1317,6 +1356,11 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         empresa: { telefone: empresa.telefone, cnpj: empresa.cnpj, client_name: empresa.client_name },
         wascriptApiUrl,
         wascriptToken,
+        waflowApiUrl: whatsappVal.waflow_api_url || process.env.WAFLOW_API_URL,
+        waflowApiToken: whatsappVal.waflow_api_token || process.env.WAFLOW_API_TOKEN,
+        waflowSessionId: whatsappVal.waflow_session_id || process.env.WAFLOW_SESSION_ID,
+        whatsappProviderMode: whatsappVal.provider_mode || process.env.WHATSAPP_PROVIDER_MODE,
+        whatsappFailoverEnabled: whatsappVal.failover_enabled ?? process.env.WHATSAPP_FAILOVER_ENABLED,
       };
 
       try {
