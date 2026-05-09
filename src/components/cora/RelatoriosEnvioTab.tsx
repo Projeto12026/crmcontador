@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Loader2,
   CheckCircle2,
@@ -29,6 +30,7 @@ import {
   ArrowLeftRight,
   MessageCircle,
   TrendingUp,
+  Info,
 } from 'lucide-react';
 import {
   useCoraEnviosReport,
@@ -62,6 +64,33 @@ function formatDateTime(iso: string | null) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/**
+ * Extrai provider/failover do campo `detalhe` quando as colunas dedicadas
+ * não existem ainda (modo fallback enquanto a migração não foi aplicada).
+ * Formato esperado: `[provider=wascript]` ou `[provider=lion_crm failover]`.
+ */
+function extractFromDetalhe(detalhe: string | null): { provider: string | null; failover: boolean } {
+  if (!detalhe) return { provider: null, failover: false };
+  const match = /\[([^\]]+)\]/.exec(detalhe);
+  if (!match) return { provider: null, failover: false };
+  const tags = match[1].split(/\s+/);
+  let provider: string | null = null;
+  let failover = false;
+  for (const t of tags) {
+    if (t.startsWith('provider=')) provider = t.slice('provider='.length);
+    else if (t === 'failover') failover = true;
+  }
+  return { provider, failover };
+}
+
+function getEffectiveProvider(envio: CoraEnvio): { provider: string | null; failover: boolean; fromFallback: boolean } {
+  if (envio.provider) {
+    return { provider: envio.provider, failover: !!envio.failover, fromFallback: false };
+  }
+  const fb = extractFromDetalhe(envio.detalhe);
+  return { provider: fb.provider, failover: fb.failover, fromFallback: !!fb.provider };
 }
 
 function ProviderBadge({ provider, failover }: { provider: string | null; failover: boolean | null }) {
@@ -178,14 +207,17 @@ export function RelatoriosEnvioTab() {
       failover: 0,
       individual: 0,
       automatico: 0,
+      fallbackUsed: false,
     };
     for (const r of rows) {
       if (r.sucesso) t.sucesso++;
       else t.falha++;
-      if (r.provider === 'wascript') t.wascript++;
-      else if (r.provider === 'lion_crm') t.lion_crm++;
+      const eff = getEffectiveProvider(r);
+      if (eff.fromFallback) t.fallbackUsed = true;
+      if (eff.provider === 'wascript') t.wascript++;
+      else if (eff.provider === 'lion_crm') t.lion_crm++;
       else t.sem_provider++;
-      if (r.failover) t.failover++;
+      if (eff.failover) t.failover++;
       if (r.tipo_envio === 'INDIVIDUAL_MANUAL') t.individual++;
       else if (r.tipo_envio) t.automatico++;
     }
@@ -207,6 +239,20 @@ export function RelatoriosEnvioTab() {
 
   return (
     <div className="space-y-4">
+      {totals.fallbackUsed ? (
+        <Alert className="border-amber-300 bg-amber-50">
+          <Info className="h-4 w-4 text-amber-700" />
+          <AlertTitle className="text-amber-900">Migração pendente no Supabase</AlertTitle>
+          <AlertDescription className="text-amber-900 text-xs">
+            Detectei envios cujo provedor está armazenado no campo <code>detalhe</code>{' '}
+            (modo de compatibilidade). Os badges abaixo já leem esses registros, mas para
+            ter filtros e índices nativos por provedor é necessário aplicar o SQL{' '}
+            <code>supabase/migrations/20260509160000_cora_envios_provider.sql</code> no
+            Supabase. Após a migração, novos envios passam a usar colunas dedicadas
+            automaticamente.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -426,7 +472,9 @@ export function RelatoriosEnvioTab() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pageRows.map((r) => (
+                    {pageRows.map((r) => {
+                      const eff = getEffectiveProvider(r);
+                      return (
                       <TableRow key={r.id}>
                         <TableCell className="whitespace-nowrap text-xs">
                           {formatDateTime(r.created_at)}
@@ -444,7 +492,7 @@ export function RelatoriosEnvioTab() {
                         </TableCell>
                         <TableCell className="text-xs">{r.canal || '—'}</TableCell>
                         <TableCell>
-                          <ProviderBadge provider={r.provider} failover={r.failover} />
+                          <ProviderBadge provider={eff.provider} failover={eff.failover} />
                         </TableCell>
                         <TableCell>
                           {r.sucesso ? (
@@ -463,7 +511,8 @@ export function RelatoriosEnvioTab() {
                           {r.detalhe || '—'}
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

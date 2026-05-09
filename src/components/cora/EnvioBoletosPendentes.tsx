@@ -303,6 +303,10 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
   // Log envio to cora_envios
   // tipo_envio: marca como 'INDIVIDUAL_MANUAL' para distinguir do envio automático
   // disparado pelo cron (AVISO_5_ANTES, LEMBRETE_DIA, AVISO_2_ATRASO, AVISO_5_ATRASO).
+  //
+  // Compatibilidade: se a migração que adiciona provider/provider_pdf/provider_text/failover
+  // ainda não foi aplicada no Supabase, faz fallback codificando o provedor dentro
+  // do campo `detalhe` ([provider=X failover]).
   const logEnvio = async (
     empresaId: string,
     boletoId: string | null,
@@ -316,22 +320,51 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
       failover?: boolean;
     }
   ) => {
+    const provider = extra?.provider ?? null;
+    const failover = extra?.failover ?? false;
+    const providerPdf = extra?.provider_pdf ?? null;
+    const providerText = extra?.provider_text ?? null;
+
+    const baseRow = {
+      empresa_id: empresaId,
+      boleto_id: boletoId,
+      competencia_mes: competenciaMes,
+      competencia_ano: competenciaAno,
+      canal,
+      sucesso,
+      detalhe,
+      tipo_envio: 'INDIVIDUAL_MANUAL',
+    };
+
+    const fullRow: Record<string, unknown> = {
+      ...baseRow,
+      provider,
+      provider_pdf: providerPdf,
+      provider_text: providerText,
+      failover,
+    };
+
+    const isMissingCol = (msg: string | null | undefined) =>
+      !!msg &&
+      /column.*(provider|failover).*does not exist|could not find the.*column.*provider|provider.*schema cache/i.test(msg);
+
     try {
-      await supabase.from('cora_envios').insert({
-        empresa_id: empresaId,
-        boleto_id: boletoId,
-        competencia_mes: competenciaMes,
-        competencia_ano: competenciaAno,
-        canal,
-        sucesso,
-        detalhe,
-        tipo_envio: 'INDIVIDUAL_MANUAL',
-        provider: extra?.provider ?? null,
-        provider_pdf: extra?.provider_pdf ?? null,
-        provider_text: extra?.provider_text ?? null,
-        failover: extra?.failover ?? false,
-      });
-    } catch { /* best effort */ }
+      const { error } = await (supabase.from('cora_envios') as any).insert(fullRow);
+      if (error && (isMissingCol(error.message) || error.code === 'PGRST204')) {
+        const tags: string[] = [];
+        if (provider) tags.push(`provider=${provider}`);
+        if (failover) tags.push('failover');
+        const fallbackDetalhe = tags.length
+          ? `${detalhe || ''} [${tags.join(' ')}]`.trim()
+          : detalhe;
+        await (supabase.from('cora_envios') as any).insert({
+          ...baseRow,
+          detalhe: fallbackDetalhe,
+        });
+      }
+    } catch {
+      /* best effort */
+    }
   };
 
   // Send boletos (PDF + message)

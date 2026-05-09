@@ -11,6 +11,68 @@ app.use(cors());
 app.use(express.json());
 cloneDb.initSchemaIfNeeded();
 
+/**
+ * Insere uma linha em cora_envios no Supabase com fallback:
+ * se as colunas provider/provider_pdf/provider_text/failover ainda não
+ * existirem (migração não aplicada), retenta sem essas colunas e codifica
+ * o provedor/failover dentro do campo `detalhe` (formato `[provider=X failover]`).
+ *
+ * Cache: depois do primeiro fallback, lembramos da decisão e pulamos a tentativa
+ * "completa" para reduzir 50% das chamadas até a migração ser aplicada.
+ */
+let _coraEnviosLegacyMode = false;
+
+function encodeProviderInDetalhe(detalhe, provider, failover) {
+  const tags = [];
+  if (provider) tags.push(`provider=${provider}`);
+  if (failover) tags.push('failover');
+  if (!tags.length) return detalhe ?? null;
+  const suffix = `[${tags.join(' ')}]`;
+  if (!detalhe) return suffix;
+  return `${detalhe} ${suffix}`;
+}
+
+async function insertCoraEnvio(supabase, row) {
+  if (!supabase) return;
+  const { provider, provider_pdf, provider_text, failover, ...legacyRow } = row;
+
+  const tryFull = async () => {
+    const { error } = await supabase.from('cora_envios').insert(row);
+    return error;
+  };
+  const tryLegacy = async () => {
+    const fallback = {
+      ...legacyRow,
+      detalhe: encodeProviderInDetalhe(legacyRow.detalhe, provider, failover),
+    };
+    const { error } = await supabase.from('cora_envios').insert(fallback);
+    return error;
+  };
+
+  if (_coraEnviosLegacyMode) {
+    const e = await tryLegacy();
+    if (e) console.warn('[cora_envios] insert legacy falhou:', e.message);
+    return;
+  }
+
+  const err = await tryFull();
+  if (!err) return;
+
+  const isMissingCol = /column.*(provider|failover).*does not exist|could not find the.*column.*provider|provider.*schema cache/i.test(
+    err.message || ''
+  ) || err.code === 'PGRST204';
+
+  if (!isMissingCol) {
+    console.warn('[cora_envios] insert falhou:', err.message);
+    return;
+  }
+
+  console.warn('[cora_envios] migração não aplicada; ativando modo legacy. Aplique supabase/migrations/20260509160000_cora_envios_provider.sql para usar colunas dedicadas.');
+  _coraEnviosLegacyMode = true;
+  const e2 = await tryLegacy();
+  if (e2) console.warn('[cora_envios] insert legacy falhou:', e2.message);
+}
+
 // ── Helper: carrega certificados (base64 env OU arquivo) ──
 function loadCertificates() {
   const certBase64 = process.env.CORA_CERT_BASE64;
@@ -1469,7 +1531,7 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         cloneDb.insertEnvio(envioRow);
         if (supabase) {
           const { id: _id, ...rest } = envioRow;
-          await supabase.from('cora_envios').insert(rest);
+          await insertCoraEnvio(supabase, rest);
         }
         sentSet.add(key(action.tipo));
         results.sent++;
@@ -1492,7 +1554,7 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
         cloneDb.insertEnvio(envioRow);
         if (supabase) {
           const { id: _id, ...rest } = envioRow;
-          await supabase.from('cora_envios').insert(rest);
+          await insertCoraEnvio(supabase, rest);
         }
       }
       await new Promise((r) => setTimeout(r, 5000));

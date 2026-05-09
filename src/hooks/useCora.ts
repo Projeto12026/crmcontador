@@ -649,6 +649,9 @@ export function useCoraEnviosReport(params: UseCoraEnviosReportParams = {}) {
   return useQuery({
     queryKey: ['cora_envios_report', startDate, endDate, provider, sucesso, tipoEnvio],
     queryFn: async () => {
+      // O filtro de provider é aplicado no cliente para suportar tanto a coluna
+      // dedicada `provider` quanto o fallback dentro de `detalhe`
+      // (`[provider=X]`) — útil enquanto a migração não foi aplicada no Supabase.
       let query = supabase
         .from('cora_envios')
         .select('*')
@@ -656,12 +659,21 @@ export function useCoraEnviosReport(params: UseCoraEnviosReportParams = {}) {
         .limit(1000);
       if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
       if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
-      if (provider && provider !== 'all') query = query.eq('provider', provider);
       if (sucesso && sucesso !== 'all') query = query.eq('sucesso', sucesso === 'true');
       if (tipoEnvio && tipoEnvio !== 'all') query = query.eq('tipo_envio', tipoEnvio);
       const { data, error } = await query;
       if (error) throw error;
-      return data as CoraEnvio[];
+      let rows = (data as CoraEnvio[]) || [];
+      if (provider && provider !== 'all') {
+        rows = rows.filter((r) => {
+          if (r.provider) return r.provider === provider;
+          if (!r.detalhe) return false;
+          const m = /\[([^\]]+)\]/.exec(r.detalhe);
+          if (!m) return false;
+          return m[1].split(/\s+/).some((t) => t === `provider=${provider}`);
+        });
+      }
+      return rows;
     },
   });
 }
