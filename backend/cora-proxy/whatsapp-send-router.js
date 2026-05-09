@@ -10,6 +10,7 @@ import * as cloneDb from './clone-db.js';
 import {
   sanitizeWaFlowCreds,
   probeWaFlowSession,
+  testWaFlowConnection,
   sendWaFlowText,
   sendWaFlowPdfFromUrl,
   sendWaFlowPdfFromBuffer,
@@ -108,6 +109,52 @@ export async function probeWascriptQuick(ws, timeoutMs = 5000) {
       error: e.name === 'AbortError' ? `timeout ${timeoutMs}ms` : e.message,
     };
   }
+}
+
+/**
+ * Validação REAL de conexão com o Wascript (sem enviar mensagem).
+ * Reusa o probe (`/api/listar-etiquetas/{token}`) e formata o resultado para a UI.
+ */
+export async function testWascriptConnection(ws, timeoutMs = 8000) {
+  const { apiUrl, token } = ws;
+  if (!apiUrl) return { ok: false, error: 'URL da API Wascript não preenchida' };
+  if (!token) return { ok: false, error: 'Token Wascript não preenchido' };
+
+  const probe = await probeWascriptQuick({ apiUrl, token }, timeoutMs);
+  if (probe.ok) {
+    return {
+      ok: true,
+      httpStatus: probe.status,
+      message: 'Conectado. Token e URL OK; sessão WhatsApp ativa.',
+    };
+  }
+  if (probe.status === 401 || probe.status === 403) {
+    return {
+      ok: false,
+      httpStatus: probe.status,
+      error: probe.message || 'Token Wascript inválido.',
+    };
+  }
+  if (probe.status === 404) {
+    return {
+      ok: false,
+      httpStatus: 404,
+      error: 'Rota não encontrada — verifique a URL base do Wascript.',
+    };
+  }
+  if (typeof probe.status === 'number') {
+    return {
+      ok: false,
+      httpStatus: probe.status,
+      error:
+        probe.message ||
+        `Servidor respondeu HTTP ${probe.status}. Verifique se a sessão do WhatsApp está conectada.`,
+    };
+  }
+  return {
+    ok: false,
+    error: probe.error || 'Falha de rede ao conectar ao Wascript.',
+  };
 }
 
 async function chooseProvider(ctx) {
@@ -212,4 +259,4 @@ export async function sendPdfRouted(phone, opts, ctx, sendWascriptPdf) {
   });
 }
 
-export { PROVIDER_WASCRIPT, PROVIDER_WAFLOW, probeWaFlowSession };
+export { PROVIDER_WASCRIPT, PROVIDER_WAFLOW, probeWaFlowSession, testWaFlowConnection };

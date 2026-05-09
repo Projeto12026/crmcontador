@@ -100,6 +100,112 @@ export function probeWaFlowSession(creds) {
   return Promise.resolve({ ok: true });
 }
 
+/**
+ * Validação REAL de conexão com a Lion CRM API.
+ *
+ * Estratégia (a API só expõe `/webhook-incoming.php` e nenhum endpoint de health):
+ * envia um POST com `{ action: "send_message" }` SEM `to`/`message`. Comportamento esperado:
+ *  - 401 → token ausente/inválido (falha)
+ *  - 403 → "API is disabled for this token" (falha)
+ *  - 404 → URL errada (falha)
+ *  - 400 → "Missing required field: ..." → SUCESSO da validação
+ *          (significa que chegamos no servidor, autenticamos e a API está habilitada;
+ *           só faltou o payload — exatamente o que queríamos provar sem enviar mensagem real)
+ *  - 200/201 → tecnicamente OK (não deveria acontecer com payload incompleto)
+ *  - timeout/rede → falha de conectividade
+ */
+export async function testWaFlowConnection(creds, timeoutMs = 8000) {
+  const { apiUrl, token } = creds;
+  if (!apiUrl) return { ok: false, error: 'URL da API não preenchida' };
+  if (!token) return { ok: false, error: 'Token não preenchido' };
+
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const resp = await fetch(`${apiUrl}/webhook-incoming.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: 'send_message' }),
+      signal: ac.signal,
+    });
+    clearTimeout(t);
+    const text = await resp.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      return {
+        ok: false,
+        httpStatus: resp.status,
+        error: `Resposta não-JSON do servidor (HTTP ${resp.status}): ${text.slice(0, 160)}`,
+      };
+    }
+
+    const message = data.error || data.message || '';
+
+    if (resp.status === 401) {
+      return { ok: false, httpStatus: 401, error: message || 'Token inválido' };
+    }
+    if (resp.status === 403) {
+      return {
+        ok: false,
+        httpStatus: 403,
+        error:
+          message ||
+          'API desabilitada. Ative o toggle "Habilitar API" no painel da extensão Lion CRM.',
+      };
+    }
+    if (resp.status === 404) {
+      return {
+        ok: false,
+        httpStatus: 404,
+        error:
+          message ||
+          'Rota /webhook-incoming.php não encontrada. Verifique a URL base.',
+      };
+    }
+    if (resp.status === 400) {
+      // Token validou, API habilitada, só faltou o conteúdo. É o que esperamos.
+      return {
+        ok: true,
+        httpStatus: 400,
+        message: 'Conectado. Token e URL OK; API habilitada.',
+      };
+    }
+    if (resp.ok) {
+      return {
+        ok: true,
+        httpStatus: resp.status,
+        message:
+          data?.message ||
+          'Servidor respondeu OK (uma mensagem pode ter sido enfileirada — verifique).',
+      };
+    }
+    if (resp.status === 429) {
+      return {
+        ok: false,
+        httpStatus: 429,
+        error: 'Rate limit excedido (60 req/min). Aguarde 60 s e tente novamente.',
+      };
+    }
+    return {
+      ok: false,
+      httpStatus: resp.status,
+      error: message || `HTTP ${resp.status}`,
+    };
+  } catch (e) {
+    clearTimeout(t);
+    if (e.name === 'AbortError') {
+      return { ok: false, error: `Timeout após ${timeoutMs} ms ao conectar à URL informada.` };
+    }
+    return { ok: false, error: e.message || 'Falha de rede ao conectar à Lion CRM API.' };
+  }
+}
+
 export async function sendWaFlowText(phone, message, creds) {
   const to = phoneDigitsBrazil(phone);
   return withRetry(

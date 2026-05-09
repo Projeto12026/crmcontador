@@ -839,6 +839,7 @@ function EmpresasTab() {
 // ===================== PARÂMETROS TAB =====================
 
 function ParametrosTab() {
+  const { toast } = useToast();
   const { data: configs, isLoading } = useCoraConfig();
   const upsertConfig = useUpsertCoraConfig();
   const { data: templates, isLoading: loadingTemplates } = useCoraMessageTemplates();
@@ -859,6 +860,67 @@ function ParametrosTab() {
     provider_mode: 'wascript_only',
     failover_enabled: false,
   });
+
+  const [testing, setTesting] = useState<{ wascript: boolean; lionCrm: boolean }>({
+    wascript: false,
+    lionCrm: false,
+  });
+  const [testResult, setTestResult] = useState<{
+    wascript?: { ok: boolean; httpStatus?: number; message?: string; error?: string } | null;
+    lionCrm?: { ok: boolean; httpStatus?: number; message?: string; error?: string } | null;
+  }>({});
+
+  const backendBaseUrlForParams = useMemo(() => {
+    const tokenUrl = apiConfig.backend_token_url || '';
+    if (tokenUrl) {
+      try { return new URL(tokenUrl).origin; } catch { return ''; }
+    }
+    return '';
+  }, [apiConfig.backend_token_url]);
+
+  const handleTestProvider = async (provider: 'wascript' | 'lionCrm') => {
+    if (!backendBaseUrlForParams) {
+      toast({
+        title: 'URL do Backend não configurada',
+        description: 'Preencha "URL do Backend (get-token)" em API Cora antes de testar a conexão.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setTesting((s) => ({ ...s, [provider]: true }));
+    setTestResult((r) => ({ ...r, [provider]: null }));
+    const isWasc = provider === 'wascript';
+    const path = isWasc ? '/api/whatsapp/test-wascript' : '/api/whatsapp/test-waflow';
+    const body = isWasc
+      ? { wascriptApiUrl: whatsappConfig.api_url, wascriptToken: whatsappConfig.token }
+      : { waflowApiUrl: whatsappConfig.waflow_api_url, waflowApiToken: whatsappConfig.waflow_api_token };
+    try {
+      const resp = await fetch(`${backendBaseUrlForParams}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      const ok = Boolean(data?.ok);
+      setTestResult((r) => ({ ...r, [provider]: data || { ok: false, error: 'Resposta inválida' } }));
+      toast({
+        title: ok
+          ? `${isWasc ? 'Wascript' : 'Lion CRM'} conectado`
+          : `Falha ao conectar (${isWasc ? 'Wascript' : 'Lion CRM'})`,
+        description: ok ? data?.message || 'Conexão OK.' : data?.error || `HTTP ${resp.status}`,
+        variant: ok ? 'default' : 'destructive',
+      });
+    } catch (e: any) {
+      setTestResult((r) => ({ ...r, [provider]: { ok: false, error: e?.message || 'Erro de rede' } }));
+      toast({
+        title: `Falha ao testar ${isWasc ? 'Wascript' : 'Lion CRM'}`,
+        description: e?.message || 'Erro de rede ao chamar o backend.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTesting((s) => ({ ...s, [provider]: false }));
+    }
+  };
 
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
@@ -1084,6 +1146,36 @@ function ParametrosTab() {
                     }
                   />
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testing.wascript || !whatsappConfig.api_url || !whatsappConfig.token}
+                    onClick={() => handleTestProvider('wascript')}
+                  >
+                    {testing.wascript ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                    )}
+                    Testar conexão
+                  </Button>
+                  {testResult.wascript && (
+                    <Badge
+                      variant="outline"
+                      className={testResult.wascript.ok ? 'bg-green-500/10 text-green-700 border-green-300' : 'bg-red-500/10 text-red-700 border-red-300'}
+                    >
+                      {testResult.wascript.ok ? 'OK' : 'Falha'}
+                      {testResult.wascript.httpStatus ? ` · ${testResult.wascript.httpStatus}` : ''}
+                    </Badge>
+                  )}
+                </div>
+                {testResult.wascript && (
+                  <p className={`text-xs ${testResult.wascript.ok ? 'text-green-700' : 'text-destructive'}`}>
+                    {testResult.wascript.ok ? testResult.wascript.message : testResult.wascript.error}
+                  </p>
+                )}
               </div>
               <div className="space-y-4">
                 <p className="text-sm font-medium">Lion CRM API (alternativa)</p>
@@ -1113,6 +1205,36 @@ function ParametrosTab() {
                     Verifique se a opção <strong>Habilitar API</strong> está ativa no painel da extensão Lion CRM. PDFs são enviados preferencialmente via URL pública (<code className="text-xs">send_document</code>); quando indisponível, usa base64 (<code className="text-xs">send_file_base64</code>).
                   </p>
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testing.lionCrm || !whatsappConfig.waflow_api_url || !whatsappConfig.waflow_api_token}
+                    onClick={() => handleTestProvider('lionCrm')}
+                  >
+                    {testing.lionCrm ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                    )}
+                    Testar conexão
+                  </Button>
+                  {testResult.lionCrm && (
+                    <Badge
+                      variant="outline"
+                      className={testResult.lionCrm.ok ? 'bg-green-500/10 text-green-700 border-green-300' : 'bg-red-500/10 text-red-700 border-red-300'}
+                    >
+                      {testResult.lionCrm.ok ? 'OK' : 'Falha'}
+                      {testResult.lionCrm.httpStatus ? ` · ${testResult.lionCrm.httpStatus}` : ''}
+                    </Badge>
+                  )}
+                </div>
+                {testResult.lionCrm && (
+                  <p className={`text-xs ${testResult.lionCrm.ok ? 'text-green-700' : 'text-destructive'}`}>
+                    {testResult.lionCrm.ok ? testResult.lionCrm.message : testResult.lionCrm.error}
+                  </p>
+                )}
               </div>
             </div>
             <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>

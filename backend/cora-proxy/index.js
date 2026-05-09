@@ -927,6 +927,55 @@ app.post('/api/gclick/run-cycle', async (req, res) => {
   }
 });
 
+// ── WhatsApp connection tests (no message sent) ───────
+//
+// Wascript: faz GET autenticado em /api/listar-etiquetas/{token}.
+// Lion CRM: POST com action incompleta para validar token sem enfileirar mensagem.
+function readWhatsappCreds(body = {}) {
+  const row = cloneDb.getConfig('whatsapp');
+  const v = (row?.valor && typeof row.valor === 'object') ? row.valor : {};
+  return {
+    wascript: {
+      apiUrl: String(body.wascriptApiUrl || v.api_url || process.env.WASCRIPT_API_URL || '').trim().replace(/\/+$/, ''),
+      token: String(body.wascriptToken || v.token || process.env.WASCRIPT_TOKEN || '').trim(),
+    },
+    waflow: {
+      apiUrl: String(body.waflowApiUrl || v.waflow_api_url || process.env.WAFLOW_API_URL || '').trim().replace(/\/+$/, ''),
+      token: String(body.waflowApiToken || v.waflow_api_token || process.env.WAFLOW_API_TOKEN || '').trim(),
+    },
+  };
+}
+
+app.post('/api/whatsapp/test-wascript', async (req, res) => {
+  try {
+    const { wascript } = readWhatsappCreds(req.body || {});
+    const result = await whatsappSendRouter.testWascriptConnection(wascript, 8000);
+    whatsappSendRouter.clearWhatsappProviderCache();
+    return res.status(result.ok ? 200 : 400).json({
+      provider: 'wascript',
+      ...result,
+    });
+  } catch (error) {
+    console.error('Erro test-wascript:', error);
+    res.status(500).json({ ok: false, error: error.message || 'Erro interno ao testar Wascript.' });
+  }
+});
+
+app.post('/api/whatsapp/test-waflow', async (req, res) => {
+  try {
+    const { waflow } = readWhatsappCreds(req.body || {});
+    const result = await whatsappSendRouter.testWaFlowConnection(waflow, 8000);
+    whatsappSendRouter.clearWhatsappProviderCache();
+    return res.status(result.ok ? 200 : 400).json({
+      provider: 'lion-crm',
+      ...result,
+    });
+  } catch (error) {
+    console.error('Erro test-waflow:', error);
+    res.status(500).json({ ok: false, error: error.message || 'Erro interno ao testar Lion CRM.' });
+  }
+});
+
 // ── Send reminder (text only) ──────────────────────
 app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res) => {
   try {
