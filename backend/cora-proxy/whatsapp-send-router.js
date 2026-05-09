@@ -195,6 +195,11 @@ function failoverOk(err) {
   return isTransientWascriptErr(err) || isWaFlowTransientForFailover(err);
 }
 
+/**
+ * Executa o envio com failover opcional. Retorna { provider, failover } onde
+ * `provider` é o provedor que efetivamente entregou e `failover` indica se houve
+ * salto do primário para o secundário.
+ */
 async function invokeWithFailover(primary, failoverEnabled, hasWsc, hasWf, runners) {
   const tryRun = async (p) => {
     if (p === PROVIDER_WASCRIPT) {
@@ -208,6 +213,7 @@ async function invokeWithFailover(primary, failoverEnabled, hasWsc, hasWf, runne
 
   try {
     await tryRun(primary);
+    return { provider: primary, failover: false };
   } catch (e1) {
     if (!failoverEnabled || !failoverOk(e1)) throw e1;
     const sec = other(primary);
@@ -215,19 +221,21 @@ async function invokeWithFailover(primary, failoverEnabled, hasWsc, hasWf, runne
     if (sec === PROVIDER_WAFLOW && !hasWf) throw e1;
     console.warn('[whatsapp-router] failover para', sec, e1.message?.slice(0, 120));
     await tryRun(sec);
+    return { provider: sec, failover: true };
   }
 }
 
 /**
  * @param {object} ctx - buildWhatsappContext()
  * @param {(wsConfig: object) => Promise<void>} sendWascript - recebe { apiUrl, token }
+ * @returns {Promise<{ provider: 'wascript'|'waflow', failover: boolean }>}
  */
 export async function sendTextRouted(phone, message, ctx, sendWascript) {
   const primary = await chooseProvider(ctx);
   const hasWsc = Boolean(ctx.wascript.apiUrl && ctx.wascript.token);
   const hasWf = Boolean(ctx.waflow.apiUrl && ctx.waflow.token);
 
-  await invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
+  return invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
     wascript: () => sendWascript(ctx.wascript),
     waflow: () => sendWaFlowText(phone, message, ctx.waflow),
   });
@@ -236,6 +244,7 @@ export async function sendTextRouted(phone, message, ctx, sendWascript) {
 /**
  * @param {object} opts - { pdfBuffer, pdfUrl, filename, caption }
  * @param {(wsConfig: object) => Promise<void>} sendWascriptPdf - (phone, buffer, filename, caption, wsConfig)
+ * @returns {Promise<{ provider: 'wascript'|'waflow', failover: boolean }>}
  */
 export async function sendPdfRouted(phone, opts, ctx, sendWascriptPdf) {
   const primary = await chooseProvider(ctx);
@@ -243,7 +252,7 @@ export async function sendPdfRouted(phone, opts, ctx, sendWascriptPdf) {
   const hasWf = Boolean(ctx.waflow.apiUrl && ctx.waflow.token);
   const { pdfBuffer, pdfUrl, filename, caption } = opts;
 
-  await invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
+  return invokeWithFailover(primary, ctx.failoverEnabled, hasWsc, hasWf, {
     wascript: () => sendWascriptPdf(phone, pdfBuffer, filename, caption, ctx.wascript),
     waflow: () => {
       // Preferir URL pública (send_document) — economiza banda.
@@ -257,6 +266,16 @@ export async function sendPdfRouted(phone, opts, ctx, sendWascriptPdf) {
       throw new Error('Lion CRM: nem pdfUrl nem pdfBuffer disponíveis para envio.');
     },
   });
+}
+
+/**
+ * Normaliza nomes de provedor para uso no banco de dados / UI.
+ * 'waflow' (id interno) -> 'lion_crm' (rótulo no DB).
+ */
+export function providerLabel(p) {
+  if (p === PROVIDER_WASCRIPT) return 'wascript';
+  if (p === PROVIDER_WAFLOW) return 'lion_crm';
+  return null;
 }
 
 export { PROVIDER_WASCRIPT, PROVIDER_WAFLOW, probeWaFlowSession, testWaFlowConnection };

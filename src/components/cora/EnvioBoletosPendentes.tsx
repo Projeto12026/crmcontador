@@ -45,6 +45,8 @@ interface EnvioResultado {
   lembreteEnviado?: boolean;
   diasAtraso?: number;
   valor?: number;
+  provider?: string;
+  failover?: boolean;
 }
 
 interface EnvioResult {
@@ -299,7 +301,21 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
   };
 
   // Log envio to cora_envios
-  const logEnvio = async (empresaId: string, boletoId: string | null, canal: string, sucesso: boolean, detalhe: string) => {
+  // tipo_envio: marca como 'INDIVIDUAL_MANUAL' para distinguir do envio automático
+  // disparado pelo cron (AVISO_5_ANTES, LEMBRETE_DIA, AVISO_2_ATRASO, AVISO_5_ATRASO).
+  const logEnvio = async (
+    empresaId: string,
+    boletoId: string | null,
+    canal: string,
+    sucesso: boolean,
+    detalhe: string,
+    extra?: {
+      provider?: string | null;
+      provider_pdf?: string | null;
+      provider_text?: string | null;
+      failover?: boolean;
+    }
+  ) => {
     try {
       await supabase.from('cora_envios').insert({
         empresa_id: empresaId,
@@ -309,6 +325,11 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         canal,
         sucesso,
         detalhe,
+        tipo_envio: 'INDIVIDUAL_MANUAL',
+        provider: extra?.provider ?? null,
+        provider_pdf: extra?.provider_pdf ?? null,
+        provider_text: extra?.provider_text ?? null,
+        failover: extra?.failover ?? false,
       });
     } catch { /* best effort */ }
   };
@@ -403,6 +424,7 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         }
 
         sucessos++;
+        const providerLabel = sendResult?.provider as string | null | undefined;
         resultados.push({
           success: true,
           empresaId,
@@ -412,8 +434,22 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
           pdfEnviado: true,
           diasAtraso: getDiasAtraso(empresa) ?? undefined,
           valor: empresa.valor_mensal,
+          provider: providerLabel ?? undefined,
+          failover: !!sendResult?.failover,
         });
-        await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP', true, 'Boleto enviado com sucesso');
+        await logEnvio(
+          empresaId,
+          empresa.boleto?.id || null,
+          'WHATSAPP',
+          true,
+          'Boleto enviado com sucesso',
+          {
+            provider: providerLabel ?? null,
+            provider_pdf: sendResult?.providerPdf ?? null,
+            provider_text: sendResult?.providerText ?? null,
+            failover: !!sendResult?.failover,
+          }
+        );
       } catch (err: any) {
         erros++;
         resultados.push({
@@ -523,13 +559,27 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
         const sendResult = await response.json().catch(() => ({ success: false }));
         if (response.ok && sendResult.success !== false) {
           sucessos++;
+          const providerLabel = sendResult?.provider as string | null | undefined;
           resultados.push({
             success: true,
             empresaId,
             empresa: empresa.client_name || empresa.cnpj,
             lembreteEnviado: true,
+            provider: providerLabel ?? undefined,
+            failover: !!sendResult?.failover,
           });
-          await logEnvio(empresaId, empresa.boleto?.id || null, 'WHATSAPP_LEMBRETE', true, 'Lembrete enviado');
+          await logEnvio(
+            empresaId,
+            empresa.boleto?.id || null,
+            'WHATSAPP_LEMBRETE',
+            true,
+            'Lembrete enviado',
+            {
+              provider: providerLabel ?? null,
+              provider_text: sendResult?.providerText ?? providerLabel ?? null,
+              failover: !!sendResult?.failover,
+            }
+          );
         } else {
           throw new Error(sendResult.error || `Erro HTTP ${response.status}`);
         }
@@ -685,6 +735,15 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
                     {r.success && r.mensagemEnviada && <Badge variant="outline" className="text-[10px]">Mensagem</Badge>}
                     {r.success && r.pdfEnviado && <Badge variant="outline" className="text-[10px]">PDF</Badge>}
                     {r.success && r.lembreteEnviado && <Badge variant="outline" className="text-[10px]">Lembrete</Badge>}
+                    {r.success && r.provider === 'wascript' && (
+                      <Badge variant="outline" className="text-[10px] bg-blue-100 text-blue-800 border-blue-200">Wascript</Badge>
+                    )}
+                    {r.success && r.provider === 'lion_crm' && (
+                      <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-200">Lion CRM</Badge>
+                    )}
+                    {r.success && r.failover && (
+                      <Badge variant="outline" className="text-[10px] bg-orange-100 text-orange-800 border-orange-200" title="Failover do provedor primário">↻ failover</Badge>
+                    )}
                     {!r.success && <span className="text-destructive text-[10px]">{formatEnvioErrorMessage(r.error)}</span>}
                   </div>
                 ))}
@@ -891,12 +950,21 @@ export function EnvioBoletosPendentes({ empresasComStatus, competenciaMes, compe
                 <Badge variant="outline">Total: {resultado.total}</Badge>
               </div>
               {resultado.resultados.filter(r => r.success).slice(0, 5).map((r, i) => (
-                <div key={i} className="text-xs flex items-center gap-2 py-0.5">
+                <div key={i} className="text-xs flex items-center gap-2 py-0.5 flex-wrap">
                   <CheckCircle2 className="h-3 w-3 text-green-600" />
                   <span>{r.empresa}</span>
                   {r.mensagemEnviada && <Badge variant="outline" className="text-[10px]">Mensagem</Badge>}
                   {r.pdfEnviado && <Badge variant="outline" className="text-[10px]">PDF</Badge>}
                   {r.lembreteEnviado && <Badge variant="outline" className="text-[10px]">Lembrete</Badge>}
+                  {r.provider === 'wascript' && (
+                    <Badge variant="outline" className="text-[10px] bg-blue-100 text-blue-800 border-blue-200">Wascript</Badge>
+                  )}
+                  {r.provider === 'lion_crm' && (
+                    <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-200">Lion CRM</Badge>
+                  )}
+                  {r.failover && (
+                    <Badge variant="outline" className="text-[10px] bg-orange-100 text-orange-800 border-orange-200" title="Failover do provedor primário">↻ failover</Badge>
+                  )}
                   {r.diasAtraso != null && r.diasAtraso > 0 && <Badge variant="outline" className="text-[10px] bg-red-500/10">{r.diasAtraso}d atraso</Badge>}
                 </div>
               ))}

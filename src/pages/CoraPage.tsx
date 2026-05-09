@@ -55,8 +55,9 @@ import {
   Plus, Edit, Trash2, Loader2, Settings2, Building2, LayoutDashboard,
   RefreshCw, CheckCircle2, Clock, AlertTriangle, XCircle, HelpCircle,
   Mail, MessageSquare, Phone, TrendingUp, Calendar, Users, DollarSign,
-  Send,
+  Send, FileBarChart,
 } from 'lucide-react';
+import { RelatoriosEnvioTab } from '@/components/cora/RelatoriosEnvioTab';
 import { Progress } from '@/components/ui/progress';
 import { EnvioBoletosPendentes } from '@/components/cora/EnvioBoletosPendentes';
 
@@ -147,6 +148,10 @@ export function CoraPage() {
             <Building2 className="h-4 w-4" />
             Empresas
           </TabsTrigger>
+          <TabsTrigger value="relatorios" className="gap-2">
+            <FileBarChart className="h-4 w-4" />
+            Relatórios
+          </TabsTrigger>
           <TabsTrigger value="parametros" className="gap-2">
             <Settings2 className="h-4 w-4" />
             Parâmetros
@@ -158,6 +163,9 @@ export function CoraPage() {
         </TabsContent>
         <TabsContent value="empresas" className="mt-4">
           <EmpresasTab />
+        </TabsContent>
+        <TabsContent value="relatorios" className="mt-4">
+          <RelatoriosEnvioTab />
         </TabsContent>
         <TabsContent value="parametros" className="mt-4">
           <ParametrosTab />

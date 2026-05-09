@@ -18,8 +18,31 @@ function getDb() {
   db = new Database(CLONE_DB_PATH);
   db.pragma('journal_mode = WAL');
   initSchema(db);
+  runMigrations(db);
   ensureGclickDefaults(db);
   return db;
+}
+
+function tableHasColumn(database, tableName, columnName) {
+  const rows = database.prepare(`PRAGMA table_info(${tableName})`).all();
+  return rows.some((r) => r.name === columnName);
+}
+
+function runMigrations(database) {
+  // Adicionar colunas de provedor no clone (idempotente; banco pode ser pré-existente).
+  if (!tableHasColumn(database, 'cora_envios', 'provider')) {
+    database.exec('ALTER TABLE cora_envios ADD COLUMN provider TEXT');
+  }
+  if (!tableHasColumn(database, 'cora_envios', 'provider_pdf')) {
+    database.exec('ALTER TABLE cora_envios ADD COLUMN provider_pdf TEXT');
+  }
+  if (!tableHasColumn(database, 'cora_envios', 'provider_text')) {
+    database.exec('ALTER TABLE cora_envios ADD COLUMN provider_text TEXT');
+  }
+  if (!tableHasColumn(database, 'cora_envios', 'failover')) {
+    database.exec('ALTER TABLE cora_envios ADD COLUMN failover INTEGER DEFAULT 0');
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cora_envios_provider ON cora_envios(provider)');
 }
 
 function initSchema(database) {
@@ -74,9 +97,14 @@ function initSchema(database) {
       sucesso INTEGER DEFAULT 0,
       detalhe TEXT,
       tipo_envio TEXT,
+      provider TEXT,
+      provider_pdf TEXT,
+      provider_text TEXT,
+      failover INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_cora_envios_dedup ON cora_envios(empresa_id, competencia_mes, competencia_ano, tipo_envio);
+    CREATE INDEX IF NOT EXISTS idx_cora_envios_provider ON cora_envios(provider);
 
     CREATE TABLE IF NOT EXISTS gclick_clients (
       id TEXT PRIMARY KEY,
@@ -215,8 +243,12 @@ export function insertEnvio(envio) {
   const database = getDb();
   const id = envio.id || crypto.randomUUID();
   database.prepare(`
-    INSERT INTO cora_envios (id, empresa_id, boleto_id, competencia_mes, competencia_ano, canal, sucesso, detalhe, tipo_envio)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cora_envios (
+      id, empresa_id, boleto_id, competencia_mes, competencia_ano,
+      canal, sucesso, detalhe, tipo_envio,
+      provider, provider_pdf, provider_text, failover
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     envio.empresa_id ?? null,
@@ -226,7 +258,11 @@ export function insertEnvio(envio) {
     envio.canal ?? 'WHATSAPP',
     envio.sucesso ? 1 : 0,
     envio.detalhe ?? null,
-    envio.tipo_envio ?? null
+    envio.tipo_envio ?? null,
+    envio.provider ?? null,
+    envio.provider_pdf ?? null,
+    envio.provider_text ?? null,
+    envio.failover ? 1 : 0
   );
   return id;
 }
@@ -463,7 +499,7 @@ export function syncFromSupabase(supabase) {
     supabase.from('cora_boletos').select('id, cora_invoice_id, empresa_id, cnpj, status, total_amount_cents, due_date, paid_at, competencia_mes, competencia_ano, synced_at'),
     supabase.from('cora_message_templates').select('id, template_key, message_body, is_active'),
     supabase.from('cora_config').select('chave, valor, updated_at'),
-    supabase.from('cora_envios').select('id, empresa_id, boleto_id, competencia_mes, competencia_ano, canal, sucesso, detalhe, tipo_envio, created_at'),
+    supabase.from('cora_envios').select('id, empresa_id, boleto_id, competencia_mes, competencia_ano, canal, sucesso, detalhe, tipo_envio, provider, provider_pdf, provider_text, failover, created_at'),
     supabase.from('clients').select('id, name, document, phone'),
     supabase.from('gclick_sync_config').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('settings').select('key, value').eq('key', 'gclick_credentials').maybeSingle(),
@@ -519,11 +555,30 @@ export function syncFromSupabase(supabase) {
 
       database.prepare('DELETE FROM cora_envios').run();
       const insEnv = database.prepare(`
-        INSERT INTO cora_envios (id, empresa_id, boleto_id, competencia_mes, competencia_ano, canal, sucesso, detalhe, tipo_envio, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO cora_envios (
+          id, empresa_id, boleto_id, competencia_mes, competencia_ano,
+          canal, sucesso, detalhe, tipo_envio,
+          provider, provider_pdf, provider_text, failover, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const e of envios) {
-        insEnv.run(e.id, e.empresa_id ?? null, e.boleto_id ?? null, e.competencia_mes ?? null, e.competencia_ano ?? null, e.canal ?? null, e.sucesso ? 1 : 0, e.detalhe ?? null, e.tipo_envio ?? null, e.created_at ?? null);
+        insEnv.run(
+          e.id,
+          e.empresa_id ?? null,
+          e.boleto_id ?? null,
+          e.competencia_mes ?? null,
+          e.competencia_ano ?? null,
+          e.canal ?? null,
+          e.sucesso ? 1 : 0,
+          e.detalhe ?? null,
+          e.tipo_envio ?? null,
+          e.provider ?? null,
+          e.provider_pdf ?? null,
+          e.provider_text ?? null,
+          e.failover ? 1 : 0,
+          e.created_at ?? null,
+        );
       }
       counts.envios = envios.length;
 

@@ -585,8 +585,13 @@ export type Database = {
           created_at: string
           detalhe: string | null
           empresa_id: string | null
+          failover: boolean | null
           id: string
+          provider: string | null
+          provider_pdf: string | null
+          provider_text: string | null
           sucesso: boolean | null
+          tipo_envio: string | null
         }
         Insert: {
           boleto_id?: string | null
@@ -596,8 +601,13 @@ export type Database = {
           created_at?: string
           detalhe?: string | null
           empresa_id?: string | null
+          failover?: boolean | null
           id?: string
+          provider?: string | null
+          provider_pdf?: string | null
+          provider_text?: string | null
           sucesso?: boolean | null
+          tipo_envio?: string | null
         }
         Update: {
           boleto_id?: string | null
@@ -607,8 +617,13 @@ export type Database = {
           created_at?: string
           detalhe?: string | null
           empresa_id?: string | null
+          failover?: boolean | null
           id?: string
+          provider?: string | null
+          provider_pdf?: string | null
+          provider_text?: string | null
           sucesso?: boolean | null
+          tipo_envio?: string | null
         }
         Relationships: [
           {

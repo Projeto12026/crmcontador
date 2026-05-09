@@ -606,6 +606,11 @@ export interface CoraEnvio {
   canal: string | null;
   sucesso: boolean | null;
   detalhe: string | null;
+  tipo_envio: string | null;
+  provider: string | null;
+  provider_pdf: string | null;
+  provider_text: string | null;
+  failover: boolean | null;
   created_at: string;
 }
 
@@ -619,6 +624,41 @@ export function useCoraEnvios(competenciaAno?: number, competenciaMes?: number) 
         .order('created_at', { ascending: false });
       if (competenciaAno) query = query.eq('competencia_ano', competenciaAno);
       if (competenciaMes) query = query.eq('competencia_mes', competenciaMes);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as CoraEnvio[];
+    },
+  });
+}
+
+/**
+ * Busca envios para a aba de Relatórios. Aceita intervalo de datas e
+ * filtros opcionais de provedor/sucesso/tipo. Sem filtros, retorna os
+ * últimos 1000 envios mais recentes.
+ */
+export interface UseCoraEnviosReportParams {
+  startDate?: string; // ISO yyyy-mm-dd
+  endDate?: string;   // ISO yyyy-mm-dd (inclusive)
+  provider?: string;  // 'wascript' | 'lion_crm' | 'all'
+  sucesso?: 'all' | 'true' | 'false';
+  tipoEnvio?: string; // 'all' | tipo
+}
+
+export function useCoraEnviosReport(params: UseCoraEnviosReportParams = {}) {
+  const { startDate, endDate, provider, sucesso, tipoEnvio } = params;
+  return useQuery({
+    queryKey: ['cora_envios_report', startDate, endDate, provider, sucesso, tipoEnvio],
+    queryFn: async () => {
+      let query = supabase
+        .from('cora_envios')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+      if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
+      if (provider && provider !== 'all') query = query.eq('provider', provider);
+      if (sucesso && sucesso !== 'all') query = query.eq('sucesso', sucesso === 'true');
+      if (tipoEnvio && tipoEnvio !== 'all') query = query.eq('tipo_envio', tipoEnvio);
       const { data, error } = await query;
       if (error) throw error;
       return data as CoraEnvio[];

@@ -987,13 +987,20 @@ app.post('/api/notifications/whatsapp-optimized/send-reminder', async (req, res)
     }
     if (!mensagem) return res.status(400).json({ success: false, error: 'Mensagem vazia' });
 
-    await whatsappSendRouter.sendTextRouted(
+    const routed = await whatsappSendRouter.sendTextRouted(
       phone,
       mensagem,
       ctx,
       (wsConfig) => sendWhatsappMessage(phone, mensagem, wsConfig)
     );
-    res.json({ success: true, message: 'Lembrete enviado' });
+    const providerLabel = whatsappSendRouter.providerLabel(routed.provider);
+    res.json({
+      success: true,
+      message: 'Lembrete enviado',
+      provider: providerLabel,
+      providerText: providerLabel,
+      failover: !!routed.failover,
+    });
   } catch (error) {
     console.error('Erro send-reminder:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1021,6 +1028,10 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
     }
 
     let pdfSent = false;
+    let pdfProviderUsed = null;
+    let pdfFailover = false;
+    let textProviderUsed = null;
+    let textFailover = false;
 
     // Tentar baixar e enviar o PDF; se falhar, NÃO enviar mensagem.
     try {
@@ -1114,12 +1125,14 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
       const cnpjClean = (empresa.cnpj || '').replace(/\D/g, '');
       const filename = `boleto_${cnpjClean}_${competencia?.replace('/', '-') || 'ref'}.pdf`;
-      await whatsappSendRouter.sendPdfRouted(
+      const routedPdf = await whatsappSendRouter.sendPdfRouted(
         phone,
         { pdfBuffer, pdfUrl, filename, caption: '' },
         ctx,
         (ph, buf, fname, caption, wsConfig) => sendWhatsappPdf(ph, buf, fname, caption, wsConfig)
       );
+      pdfProviderUsed = whatsappSendRouter.providerLabel(routedPdf.provider);
+      pdfFailover = !!routedPdf.failover;
       pdfSent = true;
       await new Promise((r) => setTimeout(r, 5000));
     } catch (pdfErr) {
@@ -1143,15 +1156,28 @@ app.post('/api/notifications/whatsapp-optimized/process-boleto-complete', async 
 
     // Enviar mensagem APENAS se o PDF tiver sido enviado com sucesso.
     if (mensagem) {
-      await whatsappSendRouter.sendTextRouted(
+      const routedText = await whatsappSendRouter.sendTextRouted(
         phone,
         mensagem,
         ctx,
         (wsConfig) => sendWhatsappMessage(phone, mensagem, wsConfig)
       );
+      textProviderUsed = whatsappSendRouter.providerLabel(routedText.provider);
+      textFailover = !!routedText.failover;
     }
 
-    res.json({ success: true, pdfSent: true, messageSent: !!mensagem });
+    // Provider final: se PDF e texto saíram pelo mesmo, usa esse; se divergiram,
+    // priorizamos o do PDF (entrega principal).
+    const finalProvider = pdfProviderUsed || textProviderUsed;
+    res.json({
+      success: true,
+      pdfSent: true,
+      messageSent: !!mensagem,
+      provider: finalProvider,
+      providerPdf: pdfProviderUsed,
+      providerText: textProviderUsed,
+      failover: pdfFailover || textFailover,
+    });
   } catch (error) {
     console.error('Erro process-boleto-complete:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1411,19 +1437,20 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
       };
 
       try {
+        let respJson = {};
         if (action.pdf) {
           body.competencia = competencia;
           body.invoiceId = boleto.cora_invoice_id;
           body.mensagem = mensagem || undefined;
           const r = await fetch(processBoletoUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          const json = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
+          respJson = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(respJson.error || `HTTP ${r.status}`);
         } else {
           body.mensagem = mensagem;
           if (!body.mensagem) { results.skipped++; continue; }
           const r = await fetch(sendReminderUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          const json = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
+          respJson = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(respJson.error || `HTTP ${r.status}`);
         }
         const envioRow = {
           empresa_id: empresaId,
@@ -1434,6 +1461,10 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
           sucesso: true,
           tipo_envio: action.tipo,
           detalhe: action.tipo,
+          provider: respJson.provider || null,
+          provider_pdf: respJson.providerPdf || null,
+          provider_text: respJson.providerText || null,
+          failover: !!respJson.failover,
         };
         cloneDb.insertEnvio(envioRow);
         if (supabase) {
@@ -1453,6 +1484,10 @@ app.post('/api/notifications/whatsapp-optimized/run-scheduled-sends', async (req
           sucesso: false,
           tipo_envio: action.tipo,
           detalhe: err.message || 'Erro',
+          provider: null,
+          provider_pdf: null,
+          provider_text: null,
+          failover: false,
         };
         cloneDb.insertEnvio(envioRow);
         if (supabase) {
