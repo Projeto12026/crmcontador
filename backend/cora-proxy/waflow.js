@@ -84,6 +84,13 @@ async function webhookSend(creds, payload) {
     err.status = response.status;
     throw err;
   }
+  // A API sempre enfileira: a entrega depende da extensão Lion CRM consumir a fila
+  // (toggle "Sondagem de Fila" + WhatsApp Web aberto/logado).
+  if (data?.queue_id != null) {
+    console.log(
+      `[LionCRM] enfileirado queue_id=${data.queue_id} action=${payload?.action} to=${payload?.to}`,
+    );
+  }
   return data;
 }
 
@@ -173,7 +180,8 @@ export async function testWaFlowConnection(creds, timeoutMs = 8000) {
       return {
         ok: true,
         httpStatus: 400,
-        message: 'Conectado. Token e URL OK; API habilitada.',
+        message:
+          'Conectado. Token/URL OK e API habilitada. ATENÇÃO: confirme no painel da extensão Lion CRM se "Sondagem de Fila" está ATIVADA e se o WhatsApp Web está aberto/logado, senão as mensagens ficam apenas enfileiradas e não chegam ao destinatário.',
       };
     }
     if (resp.ok) {

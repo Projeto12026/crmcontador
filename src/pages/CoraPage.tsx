@@ -1179,6 +1179,21 @@ function ParametrosTab() {
               </div>
               <div className="space-y-4">
                 <p className="text-sm font-medium">Lion CRM API (alternativa)</p>
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Lion CRM apenas enfileira a mensagem</AlertTitle>
+                  <AlertDescription className="text-xs space-y-1">
+                    <p>
+                      A API responde "queued successfully" e nosso painel marca como enviado, mas a entrega só acontece se, no painel da extensão Lion CRM:
+                    </p>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      <li><strong>Habilitar API</strong> esteja LIGADO;</li>
+                      <li><strong>Sondagem de Fila</strong> esteja LIGADO (consome a fila);</li>
+                      <li>WhatsApp Web esteja aberto e logado naquele navegador.</li>
+                    </ul>
+                    <p>Sem o "Sondagem de Fila" ativo, a mensagem fica retida no servidor e nunca chega ao destinatário.</p>
+                  </AlertDescription>
+                </Alert>
                 <div className="space-y-2">
                   <Label>URL da API Lion CRM</Label>
                   <Input
@@ -1202,7 +1217,7 @@ function ParametrosTab() {
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    Verifique se a opção <strong>Habilitar API</strong> está ativa no painel da extensão Lion CRM. PDFs são enviados preferencialmente via URL pública (<code className="text-xs">send_document</code>); quando indisponível, usa base64 (<code className="text-xs">send_file_base64</code>).
+                    PDFs são enviados preferencialmente via URL pública (<code className="text-xs">send_document</code>); quando indisponível, usa base64 (<code className="text-xs">send_file_base64</code>).
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
