@@ -8,7 +8,7 @@ RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json* ./
 RUN npm install --production
 
-COPY index.js clone-db.js ./
+COPY index.js clone-db.js whatsapp-send-router.js waflow.js ./
 
 # Os certificados devem ser montados como volume em /certs/
 # - /certs/certificate.pem
