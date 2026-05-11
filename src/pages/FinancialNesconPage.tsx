@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, FileDown } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, FileDown, CreditCard, AlarmClock } from 'lucide-react';
 import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportInstallmentsPdf, exportAccountsPdf } from '@/lib/pdf-export';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
@@ -26,8 +26,11 @@ import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/C
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
+import { CreditCardManager } from '@/components/financial/CreditCardManager';
+import { CreditCardInvoicesView } from '@/components/financial/CreditCardInvoicesView';
+import { DueDateCalendarView } from '@/components/financial/DueDateCalendarView';
 import { BulkEditTransactionsDialog } from '@/components/financial/BulkEditTransactionsDialog';
-import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary } from '@/types/crm';
+import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary, CreditCard as CreditCardType } from '@/types/crm';
 
 import { NesconSummaryCards, NesconDashboardView, NesconProjectionView } from '@/components/financial/NesconCashFlowView';
 
@@ -38,6 +41,7 @@ export function FinancialNesconPage() {
   const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
 
   // Category dialog state
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -514,6 +518,14 @@ export function FinancialNesconPage() {
             <Landmark className="h-4 w-4" />
             Contas
           </TabsTrigger>
+          <TabsTrigger value="credit-cards" className="gap-2">
+            <CreditCard className="h-4 w-4" />
+            Cartoes
+          </TabsTrigger>
+          <TabsTrigger value="due-dates" className="gap-2">
+            <AlarmClock className="h-4 w-4" />
+            Vencimentos
+          </TabsTrigger>
         </TabsList>
 
          <TabsContent value="dashboard" className="space-y-6 mt-4">
@@ -682,6 +694,21 @@ export function FinancialNesconPage() {
 
         <TabsContent value="financial-accounts" className="space-y-6 mt-4">
           <FinancialAccountsManager />
+        </TabsContent>
+
+        <TabsContent value="credit-cards" className="space-y-6 mt-4">
+          <CreditCardManager
+            onSelectCard={setSelectedCard}
+            selectedCardId={selectedCard?.id}
+          />
+          <CreditCardInvoicesView card={selectedCard} source="nescon" />
+        </TabsContent>
+
+        <TabsContent value="due-dates" className="space-y-6 mt-4">
+          <DueDateCalendarView
+            transactions={allTransactions || []}
+            isLoading={loadingAll}
+          />
         </TabsContent>
 
         {/* Transaction dialog */}

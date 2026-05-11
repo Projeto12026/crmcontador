@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { localDb } from '@/integrations/local/client';
 import { DashboardStats } from '@/types/crm';
 
 export function useDashboardStats() {
@@ -24,13 +25,13 @@ export function useDashboardStats() {
         supabase.from('contracts').select('id', { count: 'exact' }).eq('status', 'active'),
         supabase.from('tasks').select('id', { count: 'exact' }).in('status', ['pending', 'in_progress']),
         supabase.from('leads').select('id', { count: 'exact' }).not('status', 'in', '("won","lost")'),
-        supabase.from('financial_transactions')
+        localDb.from('financial_transactions')
           .select('amount')
           .eq('type', 'income')
           .eq('status', 'paid')
           .gte('paid_date', startOfMonth)
           .lte('paid_date', endOfMonth),
-        supabase.from('financial_transactions')
+        localDb.from('financial_transactions')
           .select('id', { count: 'exact' })
           .eq('status', 'pending')
           .lt('due_date', today),

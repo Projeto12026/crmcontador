@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Plus, Pencil, Trash2, Loader2, CreditCard, Banknote, Landmark, RefreshCw } from 'lucide-react';
@@ -67,6 +67,12 @@ export function FinancialAccountsManager() {
 
   const handleSubmit = () => {
     if (!formData.name.trim()) return;
+
+    // Cartao de credito deve ser criado pela aba "Cartoes" para garantir
+    // entidade rica (limite, fechamento, vencimento). Bloquear aqui.
+    if (!editingAccount && formData.type === 'credit') {
+      return;
+    }
 
     if (editingAccount) {
       updateAccount.mutate(
@@ -198,13 +204,16 @@ export function FinancialAccountsManager() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingAccount ? 'Editar Conta' : 'Nova Conta Financeira'}</DialogTitle>
+            <DialogDescription>
+              Para Cartao de Credito (com limite, fechamento e vencimento), use a aba &quot;Cartoes&quot;.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="account-name">Nome</Label>
               <Input
                 id="account-name"
-                placeholder="Ex: CC Inter, Caixa, Nubank..."
+                placeholder="Ex: CC Inter, Caixa..."
                 value={formData.name}
                 onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
               />
@@ -221,9 +230,16 @@ export function FinancialAccountsManager() {
                 <SelectContent>
                   <SelectItem value="bank">Banco</SelectItem>
                   <SelectItem value="cash">Caixa</SelectItem>
-                  <SelectItem value="credit">Cartão de Crédito</SelectItem>
+                  <SelectItem value="credit" disabled={!editingAccount}>
+                    Cartao de Credito (use a aba Cartoes)
+                  </SelectItem>
                 </SelectContent>
               </Select>
+              {!editingAccount && formData.type === 'credit' && (
+                <p className="text-xs text-destructive">
+                  Cartao de Credito deve ser criado pela aba &quot;Cartoes&quot; (com limite, dia de fechamento e dia de vencimento).
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="initial-balance">Saldo Inicial</Label>
@@ -240,7 +256,11 @@ export function FinancialAccountsManager() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button
               onClick={handleSubmit}
-              disabled={createAccount.isPending || updateAccount.isPending}
+              disabled={
+                createAccount.isPending ||
+                updateAccount.isPending ||
+                (!editingAccount && formData.type === 'credit')
+              }
             >
               {(createAccount.isPending || updateAccount.isPending) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

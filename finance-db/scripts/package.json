@@ -1,0 +1,13 @@
+{
+  "name": "finance-db-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scripts auxiliares para migrar o modulo financeiro do Supabase para Postgres self-hosted.",
+  "scripts": {
+    "migrate": "node migrate-from-supabase.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}

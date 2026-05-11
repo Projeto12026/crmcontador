@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { localDb as supabase } from '@/integrations/local/client';
 import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
@@ -190,7 +190,7 @@ export function useCashFlowByGroup() {
   });
 }
 
-// Criar lançamento (com suporte a parcelamento)
+// Criar lançamento (com suporte a parcelamento + cartao + vencimentos)
 export function useCreateCashFlowTransaction(source: string = 'financeiro') {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -200,17 +200,29 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
       const installmentCount = data.is_installment ? (data.installment_count || 2) : 1;
       const valuePerInstallment = data.value;
       const baseDate = parseISO(data.date);
-      
-      const transactionsToInsert = [];
+      // `due_date` informado no form ou cai pra `date`
+      const baseDueDate = data.due_date ? parseISO(data.due_date) : baseDate;
+      // Grupo id estavel para o lote (vincula parcelas)
+      const installmentGroupId = installmentCount > 1
+        ? (globalThis.crypto?.randomUUID?.() ?? `grp-${Date.now()}`)
+        : null;
+
+      const transactionsToInsert: Record<string, unknown>[] = [];
 
       for (let i = 0; i < installmentCount; i++) {
         const installmentDate = addMonths(baseDate, i);
-        const description = installmentCount > 1 
+        const installmentDueDate = addMonths(baseDueDate, i);
+        const description = installmentCount > 1
           ? `${data.description} (${i + 1}/${installmentCount})`
           : data.description;
 
-        const insertData: Record<string, unknown> = {
+        // Primeira parcela: realizada se nao for future e nao tiver paid_date negado
+        // Demais parcelas: sempre projetadas (future_*)
+        const isProjected = data.is_future || i > 0;
+
+        const row: Record<string, unknown> = {
           date: format(installmentDate, 'yyyy-MM-dd'),
+          due_date: format(installmentDueDate, 'yyyy-MM-dd'),
           account_id: data.account_id,
           description,
           value: valuePerInstallment,
@@ -222,57 +234,43 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
           notes: data.notes || null,
           paid_by_company: data.paid_by_company || false,
           source,
+          payment_method: data.payment_method || null,
+          classification: data.classification || null,
+          recurrence_type: data.recurrence_type || null,
+          credit_card_id: data.credit_card_id || null,
+          installment_group_id: installmentGroupId,
+          installment_number: installmentCount > 1 ? i + 1 : null,
+          installment_total: installmentCount > 1 ? installmentCount : null,
         };
 
-        if (data.is_future || i > 0) {
-          if (data.type === 'income') {
-            insertData.future_income = valuePerInstallment;
-            insertData.future_expense = 0;
-            insertData.income = 0;
-            insertData.expense = 0;
-          } else {
-            insertData.future_expense = valuePerInstallment;
-            insertData.future_income = 0;
-            insertData.income = 0;
-            insertData.expense = 0;
-          }
+        // Distribui valor entre future/realizado
+        if (isProjected) {
+          row.future_income = data.type === 'income' ? valuePerInstallment : 0;
+          row.future_expense = data.type === 'expense' ? valuePerInstallment : 0;
+          row.income = 0;
+          row.expense = 0;
+          row.status = 'em_aberto';
         } else {
-          if (data.type === 'income') {
-            insertData.income = valuePerInstallment;
-            insertData.expense = 0;
-            insertData.future_income = 0;
-            insertData.future_expense = 0;
+          row.income = data.type === 'income' ? valuePerInstallment : 0;
+          row.expense = data.type === 'expense' ? valuePerInstallment : 0;
+          row.future_income = 0;
+          row.future_expense = 0;
+          row.status = 'baixado';
+          if (data.paid_date) {
+            row.paid_date = data.paid_date;
           } else {
-            insertData.expense = valuePerInstallment;
-            insertData.income = 0;
-            insertData.future_income = 0;
-            insertData.future_expense = 0;
+            row.paid_date = format(installmentDate, 'yyyy-MM-dd');
           }
         }
 
-        transactionsToInsert.push({
-          date: insertData.date as string,
-          account_id: insertData.account_id as string,
-          description: insertData.description as string,
-          value: insertData.value as number,
-          origin_destination: insertData.origin_destination as string,
-          type: insertData.type as TransactionType,
-          financial_account_id: insertData.financial_account_id as string | null,
-          client_id: insertData.client_id as string | null,
-          contract_id: insertData.contract_id as string | null,
-          notes: insertData.notes as string | null,
-          paid_by_company: insertData.paid_by_company as boolean,
-          income: insertData.income as number,
-          expense: insertData.expense as number,
-          future_income: insertData.future_income as number,
-          future_expense: insertData.future_expense as number,
-          source: insertData.source as string,
-        });
+        transactionsToInsert.push(row);
       }
 
       const { data: result, error } = await supabase
         .from('cash_flow_transactions')
-        .insert(transactionsToInsert)
+        // O cast e necessario porque o schema gerado nao reflete imediatamente
+        // os campos novos quando o linter roda sem o regen do supabase types.
+        .insert(transactionsToInsert as never)
         .select();
 
       if (error) throw error;
@@ -282,15 +280,66 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
       queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       const count = data.length;
-      toast({ 
-        title: count > 1 
-          ? `${count} lançamentos criados!` 
-          : 'Lançamento criado!' 
+      toast({
+        title: count > 1
+          ? `${count} lançamentos criados!`
+          : 'Lançamento criado!'
       });
     },
     onError: (error) => {
       toast({ title: 'Erro ao criar lançamento', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+// Baixa um lancamento (status -> baixado, paid_date = hoje, income/expense += value pendente)
+export function useSettleByDueDate() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, paidDate }: { id: string; paidDate?: string }) => {
+      const { data: tx, error: fetchError } = await supabase
+        .from('cash_flow_transactions')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (fetchError) throw fetchError;
+
+      const today = paidDate || new Date().toISOString().slice(0, 10);
+      const updateData: Record<string, unknown> = {
+        status: 'baixado',
+        paid_date: today,
+      };
+      const futureIncome = Number(tx.future_income || 0);
+      const futureExpense = Number(tx.future_expense || 0);
+      if (futureIncome > 0) {
+        updateData.income = Number(tx.income || 0) + futureIncome;
+        updateData.future_income = 0;
+      }
+      if (futureExpense > 0) {
+        updateData.expense = Number(tx.expense || 0) + futureExpense;
+        updateData.future_expense = 0;
+      }
+
+      const { error } = await supabase
+        .from('cash_flow_transactions')
+        .update(updateData)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
+      toast({ title: 'Lancamento baixado!' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro ao baixar lancamento', description: error.message, variant: 'destructive' });
     },
   });
 }

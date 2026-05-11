@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { localDb as supabase } from '@/integrations/local/client';
 import { AccountCategory, AccountCategoryFormData, AccountGroupNumber, FinancialAccount } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 

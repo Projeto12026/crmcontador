@@ -58,13 +58,15 @@ export function InstallmentExpensesView({ transactions, isLoading }: Installment
       return true;
     });
 
-    // Group by base description + account_id + value
+    // Group by installment_group_id quando disponivel (modelo novo);
+    // fallback para regex em description para registros antigos.
     const groupMap = new Map<string, CashFlowTransaction[]>();
 
     for (const tx of expenses) {
-      const baseDesc = getBaseDescription(tx.description);
-      const key = `${baseDesc}|${tx.account_id}|${tx.value}`;
-      
+      const key = tx.installment_group_id
+        ? `g:${tx.installment_group_id}`
+        : `t:${getBaseDescription(tx.description)}|${tx.account_id}|${tx.value}`;
+
       if (!groupMap.has(key)) {
         groupMap.set(key, []);
       }
@@ -75,15 +77,17 @@ export function InstallmentExpensesView({ transactions, isLoading }: Installment
     const groups: InstallmentGroup[] = [];
     const today = new Date();
 
-    for (const [, txs] of groupMap) {
+    for (const [key, txs] of groupMap) {
+      const isStructured = key.startsWith('g:');
       if (txs.length < 2) continue;
 
-      const sortedTxs = [...txs].sort((a, b) => 
+      const sortedTxs = [...txs].sort((a, b) =>
         new Date(a.date).getTime() - new Date(b.date).getTime()
       );
 
       const days = sortedTxs.map(tx => parseISO(tx.date).getDate());
-      if (!hasFixedDay(days)) continue;
+      // Para grupos estruturados (installment_group_id), aceita mesmo sem dia fixo
+      if (!isStructured && !hasFixedDay(days)) continue;
 
       const firstDate = parseISO(sortedTxs[0].date);
       const lastDate = parseISO(sortedTxs[sortedTxs.length - 1].date);

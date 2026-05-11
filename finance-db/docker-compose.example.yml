@@ -1,0 +1,42 @@
+# Referencia: subir Postgres + PostgREST localmente sem EasyPanel.
+# So pra testar em desenvolvimento. Em producao use EasyPanel (veja README.md).
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crmcontador_finance
+    ports:
+      - "5432:5432"
+    volumes:
+      - finance-pg-data:/var/lib/postgresql/data
+      - ./bootstrap.sql:/docker-entrypoint-initdb.d/01-bootstrap.sql:ro
+
+  postgrest:
+    image: postgrest/postgrest:v12.0.2
+    depends_on:
+      - postgres
+    environment:
+      PGRST_DB_URI: postgres://authenticator:authenticator@postgres:5432/crmcontador_finance
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-please-change
+      PGRST_JWT_AUD: authenticated
+      PGRST_SERVER_PORT: "3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  finance-pg-data:
+
+# Apos subir:
+# 1) docker compose up -d
+# 2) Conectar no postgres e criar a role authenticator:
+#    docker compose exec postgres psql -U postgres -d crmcontador_finance -c \
+#      "CREATE ROLE authenticator NOINHERIT LOGIN PASSWORD 'authenticator'; \
+#       GRANT anon, authenticated TO authenticator;"
+# 3) Testar:
+#    curl http://localhost:3000/account_categories?limit=3
