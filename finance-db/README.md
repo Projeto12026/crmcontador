@@ -158,6 +158,29 @@ Esse token é só pra requisições **anônimas** (antes do login). Quando o usu
 
 Faça **redeploy** do app no EasyPanel para as variáveis subirem.
 
+### Financeiro vazio depois de “Implantar”?
+
+O **código novo** não mostra dados se o browser / PostgREST não estiverem alinhados com o passo acima.
+
+1. **Variáveis no serviço certo** — Em EasyPanel, abra o **app do CRM (Dockerfile / nginx)** onde roda o `docker-entrypoint.sh`. Lá deve existir **exatamente**:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`
+   - `VITE_LOCAL_DB_URL` — URL **pública** do PostgREST (a mesma que você abre no navegador, ex.: `https://finance.seudominio.com.br`), **sem** `/rest/v1` no final (o cliente adiciona).
+   - `VITE_LOCAL_DB_ANON_KEY` — JWT anon gerado como no bloco abaixo.
+
+   Se alguma estiver só no projeto do Postgres ou do PostgREST, **o frontend não vê** → módulo financeiro fica vazio ou mostra “Banco sem tabelas de cartão”.
+
+2. **Conferir `config.js` ao vivo** — Com o app no ar, abra em nova aba:
+   `https://crm.seudominio.com.br/config.js`  
+   Deve aparecer algo como `window.__ENV__ = { ... VITE_LOCAL_DB_URL: "https://...", VITE_LOCAL_DB_ANON_KEY: "eyJ..." }`.  
+   Se vier string vazia `""`, o container subiu **sem** essas env no serviço do front — ajuste no EasyPanel e **Implantar de novo**.
+
+3. **Cache do navegador** — Após corrigir env, faça um hard refresh (Ctrl+F5) ou teste em aba anônima. A imagem Docker deste repositório já evita cache longo de `/config.js` no nginx; builds antigos podiam cachear `config.js` por um ano.
+
+4. **Rede / CORS** — No DevTools → **Network**, as chamadas ao domínio do PostgREST não podem falhar por CORS. Se aparecer erro de CORS, no PostgREST (`postgrest/postgrest`) configure origens permitidas conforme a documentação da versão (ex.: variável de ambiente de CORS) incluindo `https://crm.seudominio.com.br`.
+
+5. **Schema** — Se o PostgREST responder mas faltar coluna (ex. `paid_date`), aplique `repair-cash-flow-columns.sql` no Postgres e reinicie o PostgREST ou `NOTIFY pgrst, 'reload schema';`.
+
 ## Passo 7 — Checagem final
 
 1. Abrir o app, fazer login.
