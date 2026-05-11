@@ -158,6 +158,14 @@ Esse token é só pra requisições **anônimas** (antes do login). Quando o usu
 
 Faça **redeploy** do app no EasyPanel para as variáveis subirem.
 
+### Por que o CRM funciona mas o Financeiro diz “não configurado”?
+
+No arquivo `src/integrations/supabase/client.ts` existem **URL e anon key padrão** embutidos. Assim o app pode autenticar e usar dados do Supabase **mesmo** quando o EasyPanel não define `VITE_SUPABASE_*`.
+
+O módulo financeiro **não** usa esse fallback: exige `VITE_LOCAL_DB_URL` e `VITE_LOCAL_DB_ANON_KEY` no **mesmo** serviço Docker do front (ou em `.env` local no dev). Se só o Supabase estiver “implícito” e o Postgres local não, aparece exatamente essa mensagem.
+
+Confira os logs do container ao subir: o `docker-entrypoint.sh` imprime um **AVISO** no stderr quando as variáveis locais estão vazias.
+
 ### Financeiro vazio depois de “Implantar”?
 
 O **código novo** não mostra dados se o browser / PostgREST não estiverem alinhados com o passo acima.

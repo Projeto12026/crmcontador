@@ -5,6 +5,24 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    mode === "development" && componentTagger(),
+    // Garante config.js antes do bundle: no build o Vite move o module para o <head>;
+    // manter runtime env disponível cedo evita edge cases e deixa a ordem explícita.
+    {
+      name: "inject-runtime-config-first",
+      enforce: "post",
+      transformIndexHtml(html) {
+        const without = html.replace(/\n\s*<script src="\/config\.js"[^>]*><\/script>\s*/gi, "\n");
+        const tag = '\n    <script src="/config.js"></script>\n';
+        if (without.includes('<script type="module"')) {
+          return without.replace("<script type=\"module\"", `${tag}    <script type="module"`);
+        }
+        return without.replace("</head>", `${tag}  </head>`);
+      },
+    },
+  ].filter(Boolean) as import("vite").PluginOption[],
   server: {
     host: "::",
     port: 8080,
@@ -17,7 +35,6 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     include: ["react", "react-dom", "react/jsx-runtime"],
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
