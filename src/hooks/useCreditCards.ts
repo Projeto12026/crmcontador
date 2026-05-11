@@ -13,7 +13,15 @@ export function useCreditCards() {
     queryFn: async (): Promise<CreditCardsPayload> => {
       const { data, error } = await supabase
         .from('credit_cards')
-        .select(`*, financial_accounts!credit_cards_financial_account_id_fkey(*)`)
+        .select(
+          `
+          *,
+          financial_accounts!credit_cards_financial_account_id_fkey(
+            *,
+            account_categories(*)
+          )
+        `,
+        )
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -23,10 +31,21 @@ export function useCreditCards() {
         throw error;
       }
 
-      const rows = (data || []).map((row) => ({
-        ...row,
-        financial_account: (row as { financial_accounts: unknown }).financial_accounts,
-      })) as CreditCard[];
+      const rows = (data || []).map((row) => {
+        const raw = row as {
+          financial_accounts: Record<string, unknown> & { account_categories?: unknown };
+        };
+        const fa = raw.financial_accounts;
+        const account_category = fa?.account_categories;
+        const { account_categories: _omit, ...faRest } = (fa || {}) as Record<string, unknown>;
+        const { financial_accounts: _strip, ...cardRest } = row as Record<string, unknown>;
+        return {
+          ...cardRest,
+          financial_account: fa
+            ? ({ ...faRest, account_category: account_category ?? null } as CreditCard['financial_account'])
+            : null,
+        };
+      }) as CreditCard[];
 
       return { rows, schemaMissing: false };
     },
@@ -39,30 +58,48 @@ export function useCreditCards() {
   };
 }
 
-// Cria cartao: insere financial_accounts (type=credit) e credit_cards atomico via dois passos
+// Cria cartao: vincula a uma financial_account tipo credit já existente (cadastrada em Contas financeiras)
 export function useCreateCreditCard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: CreditCardFormData) => {
-      const { data: acc, error: accErr } = await supabase
+      if (!data.financial_account_id) {
+        throw new Error('Selecione uma conta financeira do tipo cartão de crédito.');
+      }
+
+      const { data: fa, error: faErr } = await supabase
         .from('financial_accounts')
-        .insert({
-          name: data.name,
-          type: 'credit',
-          initial_balance: data.initial_balance ?? 0,
-          current_balance: data.initial_balance ?? 0,
-        })
-        .select()
+        .select('id, type')
+        .eq('id', data.financial_account_id)
         .single();
 
-      if (accErr) throw accErr;
+      if (faErr) throw faErr;
+      if (fa.type !== 'credit') {
+        throw new Error('A conta selecionada precisa ser do tipo cartão de crédito (Contas financeiras).');
+      }
+
+      const { data: existingCard } = await supabase
+        .from('credit_cards')
+        .select('id')
+        .eq('financial_account_id', fa.id)
+        .maybeSingle();
+
+      if (existingCard) {
+        throw new Error('Esta conta financeira já possui um cartão cadastrado.');
+      }
+
+      const { error: nameErr } = await supabase
+        .from('financial_accounts')
+        .update({ name: data.name.trim() })
+        .eq('id', fa.id);
+      if (nameErr) throw nameErr;
 
       const { data: card, error: cardErr } = await supabase
         .from('credit_cards')
         .insert({
-          financial_account_id: acc.id,
+          financial_account_id: fa.id,
           brand: data.brand ?? null,
           credit_limit: data.credit_limit,
           closing_day: data.closing_day,
@@ -73,17 +110,16 @@ export function useCreateCreditCard() {
         .select()
         .single();
 
-      if (cardErr) {
-        // Rollback manual da conta criada (compensacao)
-        await supabase.from('financial_accounts').delete().eq('id', acc.id);
-        throw cardErr;
-      }
+      if (cardErr) throw cardErr;
 
       return card as CreditCard;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['account_categories'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       toast({ title: 'Cartao criado!' });
     },
     onError: (error: unknown) => {
@@ -99,12 +135,14 @@ export function useUpdateCreditCard() {
   return useMutation({
     mutationFn: async ({
       id,
+      previousFinancialAccountId,
       data,
     }: {
       id: string;
-      data: Partial<CreditCardFormData> & { financial_account_id?: string };
+      previousFinancialAccountId: string;
+      data: Partial<CreditCardFormData> & { financial_account_id: string };
     }) => {
-      const { financial_account_id, name, initial_balance, ...rest } = data;
+      const { financial_account_id, name, ...rest } = data;
       const updates: Record<string, unknown> = {};
       if (rest.brand !== undefined) updates.brand = rest.brand;
       if (rest.credit_limit !== undefined) updates.credit_limit = rest.credit_limit;
@@ -113,30 +151,61 @@ export function useUpdateCreditCard() {
       if (rest.color !== undefined) updates.color = rest.color;
       if (rest.icon !== undefined) updates.icon = rest.icon;
 
-      const { data: card, error } = await supabase
-        .from('credit_cards')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if ((name || initial_balance !== undefined) && financial_account_id) {
-        const accUpdate: Record<string, unknown> = {};
-        if (name) accUpdate.name = name;
-        if (initial_balance !== undefined) accUpdate.initial_balance = initial_balance;
-        await supabase
+      if (financial_account_id !== previousFinancialAccountId) {
+        const { data: fa, error: faErr } = await supabase
           .from('financial_accounts')
-          .update(accUpdate)
-          .eq('id', financial_account_id);
+          .select('id, type')
+          .eq('id', financial_account_id)
+          .single();
+        if (faErr) throw faErr;
+        if ((fa as { type: string }).type !== 'credit') {
+          throw new Error('A nova conta precisa ser do tipo cartão de crédito.');
+        }
+        const { data: other } = await supabase
+          .from('credit_cards')
+          .select('id')
+          .eq('financial_account_id', financial_account_id)
+          .neq('id', id)
+          .maybeSingle();
+        if (other) {
+          throw new Error('Esta conta financeira já está vinculada a outro cartão.');
+        }
+        updates.financial_account_id = financial_account_id;
+      }
+
+      let card: CreditCard;
+      if (Object.keys(updates).length > 0) {
+        const { data: row, error } = await supabase
+          .from('credit_cards')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single();
+        if (error) throw error;
+        card = row as CreditCard;
+      } else {
+        const { data: row, error } = await supabase.from('credit_cards').select().eq('id', id).single();
+        if (error) throw error;
+        card = row as CreditCard;
+      }
+
+      const targetFaId = financial_account_id;
+      if (name?.trim()) {
+        const { error: accErr } = await supabase
+          .from('financial_accounts')
+          .update({ name: name.trim() })
+          .eq('id', targetFaId);
+        if (accErr) throw accErr;
       }
 
       return card as CreditCard;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['account_categories'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       toast({ title: 'Cartao atualizado!' });
     },
     onError: (error: unknown) => {
@@ -161,8 +230,11 @@ export function useDeleteCreditCard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['account_categories'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       toast({ title: 'Cartao excluido!' });
     },
     onError: (error: unknown) => {
@@ -171,23 +243,51 @@ export function useDeleteCreditCard() {
   });
 }
 
-// Calcula limite usado por cartao (soma de value das transacoes ligadas com status != baixado)
-export function useCreditCardUsage(cardId: string | null | undefined) {
+/**
+ * Limite usado: transações com credit_card_id OU despesa com financial_account_id da conta financeira do cartão.
+ */
+export function useCreditCardUsage(
+  cardId: string | null | undefined,
+  linkedFinancialAccountId?: string | null,
+) {
   return useQuery({
-    queryKey: ['credit_card_usage', cardId],
+    queryKey: ['credit_card_usage', cardId, linkedFinancialAccountId ?? ''],
     queryFn: async () => {
       if (!cardId) return { used: 0, count: 0 };
-      const { data, error } = await supabase
-        .from('cash_flow_transactions')
-        .select('value, status')
-        .eq('credit_card_id', cardId);
-      if (error) return handleFinanceQueryError(error, { used: 0, count: 0 });
 
-      const used = (data || [])
+      type Row = { id: string; value: number | null; status: string | null };
+
+      const mergeRows = (rows: Row[]): Row[] => {
+        const byId = new Map<string, Row>();
+        for (const r of rows) {
+          if (!byId.has(r.id)) byId.set(r.id, r);
+        }
+        return Array.from(byId.values());
+      };
+
+      const { data: byCard, error: errCard } = await supabase
+        .from('cash_flow_transactions')
+        .select('id, value, status')
+        .eq('credit_card_id', cardId);
+
+      if (errCard) return handleFinanceQueryError(errCard, { used: 0, count: 0 });
+
+      let byFa: Row[] = [];
+      if (linkedFinancialAccountId) {
+        const { data, error: errFa } = await supabase
+          .from('cash_flow_transactions')
+          .select('id, value, status')
+          .eq('financial_account_id', linkedFinancialAccountId)
+          .eq('type', 'expense');
+        if (errFa) return handleFinanceQueryError(errFa, { used: 0, count: 0 });
+        byFa = (data || []) as Row[];
+      }
+
+      const merged = mergeRows([...((byCard || []) as Row[]), ...byFa]);
+      const used = merged
         .filter((t) => t.status !== 'baixado')
         .reduce((sum, t) => sum + Number(t.value || 0), 0);
-
-      return { used, count: (data || []).length };
+      return { used, count: merged.length };
     },
     enabled: !!cardId,
   });

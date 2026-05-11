@@ -203,7 +203,7 @@ export function TransactionsTable({
                           variant="ghost" 
                           size="icon" 
                           onClick={() => onSettle(tx.id)}
-                          title="Liquidar valor futuro"
+                          title="Baixar: liquida o projetado, marca como pago e sincroniza com o calendário"
                         >
                           <Check className="h-4 w-4 text-green-600" />
                         </Button>

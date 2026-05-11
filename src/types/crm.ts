@@ -318,7 +318,8 @@ export interface CreditCardFormData {
   due_day: number;
   color?: string | null;
   icon?: string | null;
-  initial_balance?: number;
+  /** Conta financeira tipo "cartão" já cadastrada em Contas — obrigatória ao criar o cartão */
+  financial_account_id?: string | null;
 }
 
 export interface CreditCardInvoice {

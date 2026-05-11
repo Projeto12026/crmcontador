@@ -16,8 +16,11 @@ import { DashboardFilters, DashboardFilterValues } from '@/components/financial/
 import { useCashFlowTransactions, useCashFlowSummary, useSettleTransaction, useDeleteCashFlowTransaction, matchesCashFlowFinancialAccountFilter } from '@/hooks/useCashFlow';
 import { useAccountCategoriesFlat } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  useNesconActiveContractsWithDocuments,
+  useCoraPaidBoletosInPeriod,
+  nesconContractCnpjsFromContracts,
+} from '@/hooks/useNesconCoraBridge';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -370,25 +373,14 @@ function NesconProjectionView({
 // SUB-COMPONENT: NesconDashboardView (with adjustment)
 // ============================================================
 function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { transactions: CashFlowTransaction[]; isLoading?: boolean; startDate?: string; endDate?: string }) {
-  // ---- Contracts + Cora revenue triad ----
-  const { data: nesconContracts } = useQuery({
-    queryKey: ['nescon-contracts-revenue'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('monthly_value, client_id, clients(document)')
-        .eq('manager', 'nescon')
-        .eq('status', 'active');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // ---- Contracts + Cora revenue triad (CRM/Cora via hook — não é banco financeiro local) ----
+  const { data: nesconContracts } = useNesconActiveContractsWithDocuments();
 
   const contractRevenue = useMemo(() => {
     if (!nesconContracts) return { total: 0, cnpjs: [] as string[] };
     let total = 0;
     const cnpjs: string[] = [];
-    nesconContracts.forEach((c: any) => {
+    nesconContracts.forEach((c) => {
       total += Number(c.monthly_value || 0);
       const doc = c.clients?.document;
       if (doc) cnpjs.push(doc.replace(/[^\d]/g, ''));
@@ -406,36 +398,11 @@ function NesconDashboardView({ transactions, isLoading, startDate, endDate }: { 
 
   const projectedRevenue = (contractRevenue.total - AJUSTE_RECEITAS) * filterMonths;
 
-  // Query Cora boletos paid for these CNPJs within the period
-  const { data: coraPaid } = useQuery({
-    queryKey: ['nescon-cora-paid', contractRevenue.cnpjs, startDate, endDate],
-    queryFn: async () => {
-      if (contractRevenue.cnpjs.length === 0) return [];
-      // Normalize CNPJs for matching
-      const { data, error } = await supabase
-        .from('cora_boletos')
-        .select('cnpj, total_amount_cents, paid_at, competencia_mes, competencia_ano');
-      if (error) throw error;
-      // Filter in JS: PAID status + matching CNPJs + within date range
-      return (data || []).filter((b: any) => {
-        if (!b.paid_at) return false;
-        const bCnpj = (b.cnpj || '').replace(/[^\d]/g, '');
-        if (!contractRevenue.cnpjs.includes(bCnpj)) return false;
-        if (startDate && endDate && b.competencia_ano && b.competencia_mes) {
-          const bDate = new Date(b.competencia_ano, b.competencia_mes - 1);
-          const sDate = parseISO(startDate);
-          const eDate = parseISO(endDate);
-          return bDate >= startOfMonth(sDate) && bDate <= endOfMonth(eDate);
-        }
-        return true;
-      });
-    },
-    enabled: contractRevenue.cnpjs.length > 0,
-  });
+  const { data: coraPaid } = useCoraPaidBoletosInPeriod(contractRevenue.cnpjs, startDate, endDate);
 
   const executedRevenue = useMemo(() => {
     if (!coraPaid || coraPaid.length === 0) return 0;
-    const raw = coraPaid.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+    const raw = coraPaid.reduce((sum, b) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
     // Apply R$ 2,800 discount per month when Cora revenue exceeds threshold
     if (raw > CORA_THRESHOLD) {
       return raw - (AJUSTE_RECEITAS * filterMonths);
@@ -677,45 +644,17 @@ export function NesconCashFlowView() {
   const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
 
-  // Contracts for projection revenue
-  const { data: nesconContractsMain } = useQuery({
-    queryKey: ['nescon-contracts-main'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('monthly_value')
-        .eq('status', 'active')
-        .eq('manager', 'nescon');
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  const { data: nesconContractsShared } = useNesconActiveContractsWithDocuments();
 
   const contractRevenuePerMonth = useMemo(() => {
-    if (!nesconContractsMain) return 0;
-    return nesconContractsMain.reduce((sum, c) => sum + (c.monthly_value || 0), 0);
-  }, [nesconContractsMain]);
+    if (!nesconContractsShared) return 0;
+    return nesconContractsShared.reduce((sum, c) => sum + Number(c.monthly_value || 0), 0);
+  }, [nesconContractsShared]);
 
-  // Contracts with CNPJs for Cora matching (cash-flow tab)
-  const { data: nesconContractsWithCnpj } = useQuery({
-    queryKey: ['nescon-contracts-cnpj'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('monthly_value, client_id, clients(document)')
-        .eq('manager', 'nescon')
-        .eq('status', 'active');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const contractCnpjs = useMemo(() => {
-    if (!nesconContractsWithCnpj) return [];
-    return nesconContractsWithCnpj
-      .map((c: any) => c.clients?.document?.replace(/[^\d]/g, ''))
-      .filter(Boolean) as string[];
-  }, [nesconContractsWithCnpj]);
+  const contractCnpjs = useMemo(
+    () => nesconContractCnpjsFromContracts(nesconContractsShared),
+    [nesconContractsShared],
+  );
 
   const categoriesFlat = useMemo(() => {
     if (!allCategoriesFlat) return allCategoriesFlat;
@@ -748,34 +687,15 @@ export function NesconCashFlowView() {
     selectedFinancialAccountLabel,
   );
 
-  // Cora boletos paid for cash-flow tab period
-  const { data: coraPaidCashFlow } = useQuery({
-    queryKey: ['nescon-cora-paid-cashflow', contractCnpjs, filters.startDate, filters.endDate],
-    queryFn: async () => {
-      if (contractCnpjs.length === 0) return [];
-      const { data, error } = await supabase
-        .from('cora_boletos')
-        .select('cnpj, total_amount_cents, paid_at, competencia_mes, competencia_ano');
-      if (error) throw error;
-      return (data || []).filter((b: any) => {
-        if (!b.paid_at) return false;
-        const bCnpj = (b.cnpj || '').replace(/[^\d]/g, '');
-        if (!contractCnpjs.includes(bCnpj)) return false;
-        if (filters.startDate && filters.endDate && b.competencia_ano && b.competencia_mes) {
-          const bDate = new Date(b.competencia_ano, b.competencia_mes - 1);
-          const sDate = parseISO(filters.startDate);
-          const eDate = parseISO(filters.endDate);
-          return bDate >= startOfMonth(sDate) && bDate <= endOfMonth(eDate);
-        }
-        return true;
-      });
-    },
-    enabled: contractCnpjs.length > 0,
-  });
+  const { data: coraPaidCashFlow } = useCoraPaidBoletosInPeriod(
+    contractCnpjs,
+    filters.startDate,
+    filters.endDate,
+  );
 
   const coraExecutedRevenue = useMemo(() => {
     if (!coraPaidCashFlow || coraPaidCashFlow.length === 0) return 0;
-    const raw = coraPaidCashFlow.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+    const raw = coraPaidCashFlow.reduce((sum, b) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
     if (raw > CORA_THRESHOLD) {
       const months = (() => {
         const s = parseISO(filters.startDate);

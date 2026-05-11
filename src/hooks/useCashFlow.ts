@@ -5,6 +5,55 @@ import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
 import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
 
+/** Persiste baixa no Postgres local: status, paid_date e projeção → realizado (um único caminho para UI sincronizada). */
+async function settleCashFlowTransaction(
+  id: string,
+  options?: { paidDate?: string; requireFuture?: boolean },
+): Promise<void> {
+  const { data: tx, error: fetchError } = await supabase
+    .from('cash_flow_transactions')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const today = options?.paidDate || new Date().toISOString().slice(0, 10);
+  const updateData: Record<string, unknown> = {
+    status: 'baixado',
+    paid_date: today,
+  };
+  const futureIncome = Number(tx.future_income || 0);
+  const futureExpense = Number(tx.future_expense || 0);
+
+  if (options?.requireFuture && futureIncome <= 0 && futureExpense <= 0) {
+    throw new Error('Não há valor futuro para liquidar');
+  }
+
+  if (futureIncome > 0) {
+    const income = Number(tx.income || 0) + futureIncome;
+    updateData.income = income;
+    updateData.future_income = 0;
+    updateData.value = income;
+  }
+  if (futureExpense > 0) {
+    const expense = Number(tx.expense || 0) + futureExpense;
+    updateData.expense = expense;
+    updateData.future_expense = 0;
+    updateData.value = expense;
+  }
+
+  const { error } = await supabase.from('cash_flow_transactions').update(updateData).eq('id', id);
+  if (error) throw error;
+}
+
+function invalidateAfterCashFlowSettle(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+  queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+  queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+  queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
+  queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
+}
+
 /** Filtro por conta financeira: usa `financial_account_id`; se estiver vazio, aceita `origin_destination` igual ao nome da conta (lançamentos antigos). */
 export function matchesCashFlowFinancialAccountFilter(
   tx: Pick<CashFlowTransaction, 'financial_account_id' | 'origin_destination'>,
@@ -314,40 +363,10 @@ export function useSettleByDueDate() {
 
   return useMutation({
     mutationFn: async ({ id, paidDate }: { id: string; paidDate?: string }) => {
-      const { data: tx, error: fetchError } = await supabase
-        .from('cash_flow_transactions')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (fetchError) throw fetchError;
-
-      const today = paidDate || new Date().toISOString().slice(0, 10);
-      const updateData: Record<string, unknown> = {
-        status: 'baixado',
-        paid_date: today,
-      };
-      const futureIncome = Number(tx.future_income || 0);
-      const futureExpense = Number(tx.future_expense || 0);
-      if (futureIncome > 0) {
-        updateData.income = Number(tx.income || 0) + futureIncome;
-        updateData.future_income = 0;
-      }
-      if (futureExpense > 0) {
-        updateData.expense = Number(tx.expense || 0) + futureExpense;
-        updateData.future_expense = 0;
-      }
-
-      const { error } = await supabase
-        .from('cash_flow_transactions')
-        .update(updateData)
-        .eq('id', id);
-      if (error) throw error;
+      await settleCashFlowTransaction(id, { paidDate });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
-      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
+      invalidateAfterCashFlowSettle(queryClient);
       toast({ title: 'Lancamento baixado!' });
     },
     onError: (error: unknown) => {
@@ -356,56 +375,21 @@ export function useSettleByDueDate() {
   });
 }
 
-// Liquidar valor futuro (projetado → realizado)
+// Baixa / liquida projeção (mesma persistência que o calendário: status, paid_date, valores)
 export function useSettleTransaction() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // Buscar transação atual
-      const { data: tx, error: fetchError } = await supabase
-        .from('cash_flow_transactions')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const updateData: Record<string, unknown> = {};
-      const futureIncome = Number(tx.future_income || 0);
-      const futureExpense = Number(tx.future_expense || 0);
-
-      if (futureIncome > 0) {
-        updateData.income = Number(tx.income || 0) + futureIncome;
-        updateData.future_income = 0;
-        updateData.value = updateData.income;
-      } else if (futureExpense > 0) {
-        updateData.expense = Number(tx.expense || 0) + futureExpense;
-        updateData.future_expense = 0;
-        updateData.value = updateData.expense;
-      } else {
-        throw new Error('Não há valor futuro para liquidar');
-      }
-
-      const { data: result, error } = await supabase
-        .from('cash_flow_transactions')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result as CashFlowTransaction;
+      await settleCashFlowTransaction(id, { requireFuture: true });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
-      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
-      toast({ title: 'Valor liquidado!' });
+      invalidateAfterCashFlowSettle(queryClient);
+      toast({ title: 'Lancamento baixado!' });
     },
     onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao liquidar', error);
+      financeMutationToast(toast, 'Erro ao baixar lancamento', error);
     },
   });
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, CreditCard as CreditCardIcon, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, CreditCard as CreditCardIcon, AlertTriangle, Check, ChevronsUpDown } from 'lucide-react';
 import { CreditCard, CreditCardFormData } from '@/types/crm';
 import {
   useCreditCards,
@@ -24,6 +24,18 @@ import {
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
+import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
+import { useToast } from '@/hooks/use-toast';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -34,12 +46,15 @@ interface CreditCardManagerProps {
 }
 
 export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardManagerProps) {
+  const { toast } = useToast();
   const { data: cards, isLoading, schemaMissing } = useCreditCards();
+  const { data: financialAccounts } = useFinancialAccounts();
   const createCard = useCreateCreditCard();
   const updateCard = useUpdateCreditCard();
   const deleteCard = useDeleteCreditCard();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [accountComboOpen, setAccountComboOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCard | null>(null);
   const [cardToDelete, setCardToDelete] = useState<CreditCard | null>(null);
@@ -51,11 +66,27 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
     closing_day: 1,
     due_day: 10,
     color: '#1f2937',
-    initial_balance: 0,
+    financial_account_id: null,
   });
+
+  const usedFinancialAccountIds = useMemo(() => {
+    return new Set(
+      (cards || []).filter((c) => !editingCard || c.id !== editingCard.id).map((c) => c.financial_account_id),
+    );
+  }, [cards, editingCard]);
+
+  const allCreditAccounts = useMemo(() => {
+    return (financialAccounts || [])
+      .filter((a) => a.type === 'credit')
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [financialAccounts]);
+
+  const isFaTakenByOtherCard = (faId: string) =>
+    usedFinancialAccountIds.has(faId) && faId !== formData.financial_account_id;
 
   const openNew = () => {
     setEditingCard(null);
+    setAccountComboOpen(false);
     setFormData({
       name: '',
       brand: '',
@@ -63,13 +94,14 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
       closing_day: 1,
       due_day: 10,
       color: '#1f2937',
-      initial_balance: 0,
+      financial_account_id: null,
     });
     setDialogOpen(true);
   };
 
   const openEdit = (card: CreditCard) => {
     setEditingCard(card);
+    setAccountComboOpen(false);
     setFormData({
       name: card.financial_account?.name || '',
       brand: card.brand || '',
@@ -77,18 +109,31 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
       closing_day: card.closing_day,
       due_day: card.due_day,
       color: card.color || '#1f2937',
-      initial_balance: Number(card.financial_account?.initial_balance || 0),
+      financial_account_id: card.financial_account_id,
     });
     setDialogOpen(true);
   };
 
   const handleSubmit = () => {
     if (!formData.name.trim()) return;
+    if (!formData.financial_account_id) {
+      toast({
+        title: 'Conta financeira obrigatória',
+        description:
+          'Cadastre antes uma conta do tipo cartão em Contas financeiras, depois selecione-a aqui.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (editingCard) {
       updateCard.mutate(
         {
           id: editingCard.id,
-          data: { ...formData, financial_account_id: editingCard.financial_account_id },
+          previousFinancialAccountId: editingCard.financial_account_id,
+          data: {
+            ...formData,
+            financial_account_id: formData.financial_account_id,
+          },
         },
         { onSuccess: () => setDialogOpen(false) },
       );
@@ -143,6 +188,16 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
             </Alert>
           )}
 
+          {!schemaMissing && allCreditAccounts.length === 0 && (
+            <Alert>
+              <AlertTitle>Nenhuma conta financeira &quot;cartão&quot; disponível</AlertTitle>
+              <AlertDescription>
+                Crie em <strong>Contas</strong> uma conta do tipo cartão de crédito; depois volte aqui para
+                registrar o cartão (fechamento, limite, etc.).
+              </AlertDescription>
+            </Alert>
+          )}
+
           {!schemaMissing && (!cards || cards.length === 0) && (
             <div className="text-center py-8 text-muted-foreground">
               <p>Nenhum cartao cadastrado.</p>
@@ -167,15 +222,94 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) setAccountComboOpen(false);
+      }}>
+        <DialogContent className="max-h-[min(90vh,720px)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCard ? 'Editar Cartao' : 'Novo Cartao de Credito'}</DialogTitle>
-            <DialogDescription>
-              Informe os dados do cartao. Fechamento e vencimento sao dias do mes.
+            <DialogDescription className="text-left">
+              Primeiro escolha na <strong>lista suspensa</strong> a conta tipo cartão cadastrada em{' '}
+              <strong>Contas financeiras</strong>. Depois ajuste limite, datas e bandeira.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Conta do cartão (lista de contas cadastradas)</Label>
+              <Popover open={accountComboOpen} onOpenChange={setAccountComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={accountComboOpen}
+                    className="w-full justify-between font-normal min-h-11 px-3"
+                    disabled={!!schemaMissing}
+                  >
+                    <span className="truncate text-left">
+                      {formData.financial_account_id
+                        ? (financialAccounts || []).find((a) => a.id === formData.financial_account_id)?.name ??
+                          'Conta selecionada'
+                        : '— Abrir lista e escolher conta tipo cartão —'}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="p-0 z-[300] w-[min(calc(100vw-2rem),var(--radix-popover-trigger-width))] min-w-[var(--radix-popover-trigger-width)]"
+                  align="start"
+                  sideOffset={4}
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  <Command>
+                    <CommandInput placeholder="Buscar pelo nome da conta..." />
+                    <CommandList>
+                      <CommandEmpty className="py-6 text-center text-sm px-2">
+                        Nenhuma conta tipo &quot;cartão de crédito&quot;. Cadastre em Contas → tipo
+                        Cartão.
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {allCreditAccounts.map((a) => {
+                          const taken = isFaTakenByOtherCard(a.id);
+                          const selected = formData.financial_account_id === a.id;
+                          return (
+                            <CommandItem
+                              key={a.id}
+                              value={`${a.name} ${a.id}`}
+                              disabled={taken}
+                              onSelect={() => {
+                                if (taken) return;
+                                setFormData((p) => ({
+                                  ...p,
+                                  financial_account_id: a.id,
+                                  name: a.name,
+                                }));
+                                setAccountComboOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn('mr-2 h-4 w-4 shrink-0', selected ? 'opacity-100' : 'opacity-0')}
+                              />
+                              <span className="truncate flex-1">{a.name}</span>
+                              {taken && (
+                                <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                                  já com cartão
+                                </span>
+                              )}
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">
+                Todas as contas financeiras do tipo cartão aparecem na lista; as já usadas em outro cadastro
+                de cartão ficam bloqueadas.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="cc-name">Nome do cartao</Label>
@@ -185,6 +319,7 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
                   value={formData.name}
                   onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
                 />
+                <p className="text-xs text-muted-foreground">Também atualiza o nome da conta financeira.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cc-brand">Bandeira</Label>
@@ -248,20 +383,6 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
                   className="h-10"
                 />
               </div>
-              {!editingCard && (
-                <div className="space-y-2">
-                  <Label htmlFor="cc-initial">Saldo inicial</Label>
-                  <Input
-                    id="cc-initial"
-                    type="number"
-                    step="0.01"
-                    value={formData.initial_balance ?? 0}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, initial_balance: Number(e.target.value) }))
-                    }
-                  />
-                </div>
-              )}
             </div>
           </div>
           <DialogFooter>
@@ -299,7 +420,7 @@ interface CreditCardRowProps {
 }
 
 function CreditCardRow({ card, isSelected, onSelect, onEdit, onDelete }: CreditCardRowProps) {
-  const { data: usage } = useCreditCardUsage(card.id);
+  const { data: usage } = useCreditCardUsage(card.id, card.financial_account_id);
   const limit = Number(card.credit_limit || 0);
   const used = usage?.used || 0;
   const available = Math.max(0, limit - used);
@@ -327,7 +448,10 @@ function CreditCardRow({ card, isSelected, onSelect, onEdit, onDelete }: CreditC
               Fech. {card.closing_day} / Venc. {card.due_day}
             </Badge>
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+            Conta financeira · uso inclui cartão no lançamento e despesas nesta conta
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             <span>Limite: {formatCurrency(limit)}</span>
             <span>·</span>
             <span>Usado: {formatCurrency(used)}</span>
@@ -335,6 +459,12 @@ function CreditCardRow({ card, isSelected, onSelect, onEdit, onDelete }: CreditC
             <span className={available > 0 ? 'text-green-600' : 'text-red-600'}>
               Disponivel: {formatCurrency(available)}
             </span>
+            {usage != null && usage.count > 0 && (
+              <>
+                <span>·</span>
+                <span>{usage.count} lançamento(s)</span>
+              </>
+            )}
           </div>
           <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
             <div
