@@ -2,9 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { CreditCard, CreditCardFormData } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
-import { isFinanceDataUnavailableError, financeMutationToast, handleFinanceQueryError } from '@/lib/postgrest-errors';
+import {
+  isFinanceDataUnavailableError,
+  isNoLocalFinanceDbError,
+  isCreditFinanceSchemaMissingError,
+  financeMutationToast,
+  handleFinanceQueryError,
+} from '@/lib/postgrest-errors';
 
-type CreditCardsPayload = { rows: CreditCard[]; schemaMissing: boolean };
+export type FinanceCreditCardsDbIssue = 'no_env' | 'local_schema' | null;
+
+type CreditCardsPayload = { rows: CreditCard[]; schemaMissing: boolean; financeDbIssue: FinanceCreditCardsDbIssue };
 
 // Busca todos os cartoes de credito (com sua financial_account)
 export function useCreditCards() {
@@ -47,7 +55,7 @@ export function useCreditCards() {
         };
       }) as CreditCard[];
 
-      return { rows, schemaMissing: false };
+      return { rows, schemaMissing: false, financeDbIssue: null };
     },
   });
 
@@ -55,6 +63,7 @@ export function useCreditCards() {
     ...q,
     data: q.data?.rows,
     schemaMissing: q.isSuccess ? Boolean(q.data?.schemaMissing) : false,
+    financeDbIssue: q.isSuccess ? (q.data?.financeDbIssue ?? null) : null,
   };
 }
 

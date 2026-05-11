@@ -23,7 +23,7 @@ import {
 } from '@/hooks/useCreditCards';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
+import { FINANCE_DB_USER_HINT, FINANCE_DB_LOCAL_SCHEMA_HINT } from '@/lib/postgrest-errors';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -47,7 +47,7 @@ interface CreditCardManagerProps {
 
 export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardManagerProps) {
   const { toast } = useToast();
-  const { data: cards, isLoading, schemaMissing } = useCreditCards();
+  const { data: cards, isLoading, schemaMissing, financeDbIssue } = useCreditCards();
   const { data: financialAccounts } = useFinancialAccounts();
   const createCard = useCreateCreditCard();
   const updateCard = useUpdateCreditCard();
@@ -183,8 +183,14 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
           {schemaMissing && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Banco sem tabelas de cartao</AlertTitle>
-              <AlertDescription>{FINANCE_DB_USER_HINT}</AlertDescription>
+              <AlertTitle>
+                {financeDbIssue === 'local_schema'
+                  ? 'Postgres local sem tabelas de cartao'
+                  : 'Banco financeiro nao configurado'}
+              </AlertTitle>
+              <AlertDescription>
+                {financeDbIssue === 'local_schema' ? FINANCE_DB_LOCAL_SCHEMA_HINT : FINANCE_DB_USER_HINT}
+              </AlertDescription>
             </Alert>
           )}
 
