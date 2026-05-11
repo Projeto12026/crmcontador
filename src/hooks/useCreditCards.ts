@@ -2,25 +2,41 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { CreditCard, CreditCardFormData } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
+import { isFinanceDataUnavailableError, financeMutationToast, handleFinanceQueryError } from '@/lib/postgrest-errors';
+
+type CreditCardsPayload = { rows: CreditCard[]; schemaMissing: boolean };
 
 // Busca todos os cartoes de credito (com sua financial_account)
 export function useCreditCards() {
-  return useQuery({
+  const q = useQuery({
     queryKey: ['credit_cards'],
-    queryFn: async () => {
+    queryFn: async (): Promise<CreditCardsPayload> => {
       const { data, error } = await supabase
         .from('credit_cards')
         .select(`*, financial_accounts!credit_cards_financial_account_id_fkey(*)`)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        if (isFinanceDataUnavailableError(error)) {
+          return { rows: [], schemaMissing: true };
+        }
+        throw error;
+      }
 
-      return (data || []).map((row) => ({
+      const rows = (data || []).map((row) => ({
         ...row,
         financial_account: (row as { financial_accounts: unknown }).financial_accounts,
       })) as CreditCard[];
+
+      return { rows, schemaMissing: false };
     },
   });
+
+  return {
+    ...q,
+    data: q.data?.rows,
+    schemaMissing: q.isSuccess ? Boolean(q.data?.schemaMissing) : false,
+  };
 }
 
 // Cria cartao: insere financial_accounts (type=credit) e credit_cards atomico via dois passos
@@ -70,8 +86,8 @@ export function useCreateCreditCard() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Cartao criado!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao criar cartao', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao criar cartao', error);
     },
   });
 }
@@ -123,8 +139,8 @@ export function useUpdateCreditCard() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Cartao atualizado!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao atualizar cartao', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao atualizar cartao', error);
     },
   });
 }
@@ -149,8 +165,8 @@ export function useDeleteCreditCard() {
       queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
       toast({ title: 'Cartao excluido!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao excluir cartao', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao excluir cartao', error);
     },
   });
 }
@@ -165,7 +181,7 @@ export function useCreditCardUsage(cardId: string | null | undefined) {
         .from('cash_flow_transactions')
         .select('value, status')
         .eq('credit_card_id', cardId);
-      if (error) throw error;
+      if (error) return handleFinanceQueryError(error, { used: 0, count: 0 });
 
       const used = (data || [])
         .filter((t) => t.status !== 'baixado')

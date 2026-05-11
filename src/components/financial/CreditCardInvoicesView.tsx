@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   RotateCcw,
   Wallet,
+  AlertTriangle,
 } from 'lucide-react';
 import { CreditCard, CreditCardInvoice, FinancialAccount } from '@/types/crm';
 import {
@@ -38,6 +39,8 @@ import {
   useReopenCreditCardInvoice,
 } from '@/hooks/useCreditCardInvoices';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -51,7 +54,7 @@ interface CreditCardInvoicesViewProps {
 }
 
 export function CreditCardInvoicesView({ card, source }: CreditCardInvoicesViewProps) {
-  const { data: invoices, isLoading } = useCreditCardInvoices(card?.id || null);
+  const { data: invoices, isLoading, schemaMissing } = useCreditCardInvoices(card?.id || null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
   const selectedInvoice = useMemo(() => {
@@ -87,11 +90,17 @@ export function CreditCardInvoicesView({ card, source }: CreditCardInvoicesViewP
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!invoices?.length ? (
+          {!schemaMissing && !invoices?.length ? (
             <p className="text-sm text-muted-foreground">
               Nenhuma fatura ainda. Crie um lancamento com pagamento &quot;Cartao de Credito&quot;
               vinculado a este cartao para gerar a primeira fatura.
             </p>
+          ) : schemaMissing ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Faturas indisponiveis</AlertTitle>
+              <AlertDescription>{FINANCE_DB_USER_HINT}</AlertDescription>
+            </Alert>
           ) : (
             <InvoiceTimeline
               invoices={invoices}

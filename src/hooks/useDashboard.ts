@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { localDb } from '@/integrations/local/client';
 import { DashboardStats } from '@/types/crm';
+import { isFinanceDataUnavailableError } from '@/lib/postgrest-errors';
 
 export function useDashboardStats() {
   return useQuery({
@@ -39,7 +40,19 @@ export function useDashboardStats() {
         supabase.from('client_onboarding').select('id', { count: 'exact' }).eq('status', 'in_progress'),
       ]);
 
-      const monthlyRevenue = (revenueResult.data || []).reduce((sum, t) => sum + (t.amount || 0), 0);
+      let monthlyRevenue = 0;
+      if (revenueResult.error) {
+        if (!isFinanceDataUnavailableError(revenueResult.error)) throw revenueResult.error;
+      } else {
+        monthlyRevenue = (revenueResult.data || []).reduce((sum, t) => sum + (t.amount || 0), 0);
+      }
+
+      let overdueTransactions = 0;
+      if (overdueResult.error) {
+        if (!isFinanceDataUnavailableError(overdueResult.error)) throw overdueResult.error;
+      } else {
+        overdueTransactions = overdueResult.count || 0;
+      }
 
       return {
         totalClients: clientsResult.count || 0,
@@ -47,11 +60,11 @@ export function useDashboardStats() {
         pendingTasks: tasksResult.count || 0,
         openLeads: leadsResult.count || 0,
         monthlyRevenue,
-        overdueTransactions: overdueResult.count || 0,
+        overdueTransactions,
         processesInProgress: processesResult.count || 0,
         onboardingsInProgress: onboardingsResult.count || 0,
       };
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
   });
 }

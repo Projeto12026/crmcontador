@@ -3,6 +3,7 @@ import { localDb as supabase } from '@/integrations/local/client';
 import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
+import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
 
 /** Filtro por conta financeira: usa `financial_account_id`; se estiver vazio, aceita `origin_destination` igual ao nome da conta (lançamentos antigos). */
 export function matchesCashFlowFinancialAccountFilter(
@@ -37,8 +38,7 @@ export function useCashFlowTransactions(filters?: {
         .select(`
           *,
           account_categories(*),
-          financial_accounts(*),
-          clients(id, name)
+          financial_accounts(*)
         `)
         .order('date', { ascending: false });
 
@@ -59,13 +59,13 @@ export function useCashFlowTransactions(filters?: {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) return handleFinanceQueryError(error, [] as CashFlowTransaction[]);
 
-      return data.map(item => ({
+      return (data || []).map(item => ({
         ...item,
         account: item.account_categories,
         financial_account: item.financial_accounts,
-        client: item.clients,
+        client: (item as { clients?: unknown }).clients ?? null,
       })) as CashFlowTransaction[];
     },
   });
@@ -99,13 +99,25 @@ export function useCashFlowSummary(
 
       const { data: transactions, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        return handleFinanceQueryError(error, {
+          totalIncome: 0,
+          totalExpense: 0,
+          balance: 0,
+          projectedIncome: 0,
+          projectedExpense: 0,
+          executedIncome: 0,
+          executedExpense: 0,
+          executedBalance: 0,
+          transactionCount: 0,
+        } as CashFlowSummary);
+      }
 
       const nameNorm = financialAccountLabel?.trim().toLowerCase() || null;
 
       // Nescon usa todos os seus grupos; Financeiro exclui grupos > 6 e administrativos (100, 200)
       const filtered = transactions?.filter(t => {
-        const group = (t.account_categories as { group_number: number })?.group_number;
+        const group = (t.account_categories as unknown as { group_number: number })?.group_number;
         if (!group) return false;
         if (source === 'nescon') {
           // segue
@@ -168,12 +180,12 @@ export function useCashFlowByGroup() {
           account_categories!inner(group_number, name)
         `);
 
-      if (error) throw error;
+      if (error) return handleFinanceQueryError(error, {} as Record<number, { total: number; name: string }>);
 
       const groupStats: Record<number, { total: number; name: string }> = {};
 
       data?.forEach(t => {
-        const group = (t.account_categories as { group_number: number; name: string })?.group_number;
+        const group = (t.account_categories as unknown as { group_number: number; name: string })?.group_number;
         if (!group || group > 6) return; // Excluir grupos 7 e 8
 
         if (!groupStats[group]) {
@@ -289,8 +301,8 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
           : 'Lançamento criado!'
       });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao criar lançamento', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao criar lancamento', error);
     },
   });
 }
@@ -338,8 +350,8 @@ export function useSettleByDueDate() {
       queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
       toast({ title: 'Lancamento baixado!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao baixar lancamento', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao baixar lancamento', error);
     },
   });
 }
@@ -392,8 +404,8 @@ export function useSettleTransaction() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Valor liquidado!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao liquidar', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao liquidar', error);
     },
   });
 }
@@ -418,8 +430,8 @@ export function useDeleteCashFlowTransaction() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamento excluído!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao excluir', error);
     },
   });
 }
@@ -485,8 +497,8 @@ export function useUpdateCashFlowTransaction() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamento atualizado!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao atualizar', error);
     },
   });
 }
@@ -630,8 +642,8 @@ export function useBulkUpdateCashFlowTransactions() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamentos atualizados!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro na atualização em lote', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro na atualizacao em lote', error);
     },
   });
 }

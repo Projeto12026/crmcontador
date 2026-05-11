@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -30,6 +31,12 @@ import {
 } from '@/components/ui/select';
 import { Client } from '@/types/crm';
 import { useCreditCards } from '@/hooks/useCreditCards';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
+import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
+
+/** Radix Select nao permite SelectItem com value="". */
+const NO_CREDIT_CARD_ITEMS_VALUE = '__no_credit_cards__';
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -71,7 +78,7 @@ export function TransactionFormDialog({
   };
 
   const [formData, setFormData] = useState<CashFlowTransactionFormData>(getInitialFormData());
-  const { data: creditCards } = useCreditCards();
+  const { data: creditCards, schemaMissing: creditSchemaMissing } = useCreditCards();
 
   const selectedFinancialAccountName =
     financialAccounts.find((acc) => acc.id === formData.financial_account_id)?.name || '';
@@ -84,6 +91,7 @@ export function TransactionFormDialog({
         : (editingTransaction.future_expense || 0);
       const isFuture = futureValue > 0;
 
+      const instTotal = editingTransaction.installment_total ?? 0;
       setFormData({
         date: editingTransaction.date.split('T')[0],
         due_date: (editingTransaction.due_date || editingTransaction.date).slice(0, 10),
@@ -94,6 +102,8 @@ export function TransactionFormDialog({
         origin_destination: editingTransaction.origin_destination,
         type: editingTransaction.type,
         is_future: isFuture,
+        is_installment: instTotal > 1,
+        installment_count: instTotal > 1 ? instTotal : 2,
         financial_account_id: editingTransaction.financial_account_id || undefined,
         client_id: editingTransaction.client_id || undefined,
         notes: editingTransaction.notes || undefined,
@@ -141,6 +151,9 @@ export function TransactionFormDialog({
               ? 'Editar Lançamento'
               : (type === 'income' ? 'Nova Receita' : 'Nova Despesa')}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preencha os dados do lançamento do fluxo de caixa e confirme para salvar.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
@@ -325,11 +338,20 @@ export function TransactionFormDialog({
           {formData.payment_method === 'credit_card' && (
             <div className="space-y-2">
               <Label>Cartao de Credito *</Label>
+              {creditSchemaMissing && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Tabelas de cartao nao encontradas</AlertTitle>
+                  <AlertDescription>{FINANCE_DB_USER_HINT}</AlertDescription>
+                </Alert>
+              )}
               <Select
                 value={formData.credit_card_id || ''}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, credit_card_id: v || undefined })
-                }
+                onValueChange={(v) => {
+                  if (v === NO_CREDIT_CARD_ITEMS_VALUE) return;
+                  setFormData({ ...formData, credit_card_id: v || undefined });
+                }}
+                disabled={creditSchemaMissing}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um cartao" />
@@ -343,8 +365,10 @@ export function TransactionFormDialog({
                     </SelectItem>
                   ))}
                   {(!creditCards || creditCards.length === 0) && (
-                    <SelectItem value="" disabled>
-                      Nenhum cartao cadastrado — crie um na aba &quot;Cartoes&quot;
+                    <SelectItem value={NO_CREDIT_CARD_ITEMS_VALUE} disabled>
+                      {creditSchemaMissing
+                        ? 'Cadastro de cartoes indisponivel ate aplicar a migracao SQL'
+                        : 'Nenhum cartao cadastrado — crie um na aba "Cartoes"'}
                     </SelectItem>
                   )}
                 </SelectContent>
@@ -359,7 +383,7 @@ export function TransactionFormDialog({
             <div className="flex items-center gap-3">
               <Switch
                 id="is_future"
-                checked={formData.is_future}
+                checked={formData.is_future ?? true}
                 onCheckedChange={(checked) =>
                   setFormData({
                     ...formData,
@@ -392,7 +416,7 @@ export function TransactionFormDialog({
             <div className="flex items-center gap-3">
               <Switch
                 id="is_installment"
-                checked={formData.is_installment}
+                checked={!!formData.is_installment}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_installment: checked })}
                 disabled={!!editingTransaction}
               />

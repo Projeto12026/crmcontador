@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Loader2, CreditCard as CreditCardIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, CreditCard as CreditCardIcon, AlertTriangle } from 'lucide-react';
 import { CreditCard, CreditCardFormData } from '@/types/crm';
 import {
   useCreditCards,
@@ -22,6 +22,8 @@ import {
   useCreditCardUsage,
 } from '@/hooks/useCreditCards';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -32,7 +34,7 @@ interface CreditCardManagerProps {
 }
 
 export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardManagerProps) {
-  const { data: cards, isLoading } = useCreditCards();
+  const { data: cards, isLoading, schemaMissing } = useCreditCards();
   const createCard = useCreateCreditCard();
   const updateCard = useUpdateCreditCard();
   const deleteCard = useDeleteCreditCard();
@@ -127,13 +129,21 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
             <CreditCardIcon className="h-5 w-5" />
             Cartoes de Credito
           </CardTitle>
-          <Button onClick={openNew} size="sm">
+          <Button onClick={openNew} size="sm" disabled={schemaMissing}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Cartao
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(!cards || cards.length === 0) && (
+          {schemaMissing && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Banco sem tabelas de cartao</AlertTitle>
+              <AlertDescription>{FINANCE_DB_USER_HINT}</AlertDescription>
+            </Alert>
+          )}
+
+          {!schemaMissing && (!cards || cards.length === 0) && (
             <div className="text-center py-8 text-muted-foreground">
               <p>Nenhum cartao cadastrado.</p>
               <Button variant="outline" className="mt-4" onClick={openNew}>
@@ -143,16 +153,17 @@ export function CreditCardManager({ onSelectCard, selectedCardId }: CreditCardMa
             </div>
           )}
 
-          {cards?.map((card) => (
-            <CreditCardRow
-              key={card.id}
-              card={card}
-              isSelected={selectedCardId === card.id}
-              onSelect={() => onSelectCard?.(card)}
-              onEdit={() => openEdit(card)}
-              onDelete={() => handleDelete(card)}
-            />
-          ))}
+          {!schemaMissing &&
+            cards?.map((card) => (
+              <CreditCardRow
+                key={card.id}
+                card={card}
+                isSelected={selectedCardId === card.id}
+                onSelect={() => onSelectCard?.(card)}
+                onEdit={() => openEdit(card)}
+                onDelete={() => handleDelete(card)}
+              />
+            ))}
         </CardContent>
       </Card>
 

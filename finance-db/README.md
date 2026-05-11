@@ -1,6 +1,8 @@
 # Banco Financeiro Local (Postgres + PostgREST no EasyPanel)
 
-Este diretório contém tudo para mover **o módulo financeiro** do Supabase para um Postgres self-hosted na sua VPS Hostinger, mantendo o resto do app (Auth, clients, contracts, tasks, leads, processes, onboarding, gclick, cora, payroll) no Supabase.
+O frontend **nao** usa mais o REST do Supabase (`*.supabase.co/rest/v1`) para tabelas financeiras: fluxo de caixa, plano de contas, contas bancarias, transacoes financeiras legado, cartoes e faturas vao **somente** para o PostgREST configurado em `VITE_LOCAL_DB_URL`. O Supabase do projeto continua servindo **autenticacao** e **demais modulos** do CRM.
+
+Este diretório contém tudo para o **Postgres + PostgREST** do modulo financeiro na VPS (EasyPanel).
 
 ## Arquivos
 
@@ -168,7 +170,7 @@ Faça **redeploy** do app no EasyPanel para as variáveis subirem.
 
 ## Rollback (se algo der errado)
 
-Reverter o frontend é trivial: remover/zerar `VITE_LOCAL_DB_URL` e redeploy. O código tem fallback: se a URL local estiver vazia, ele continua usando o cliente Supabase. Os lançamentos novos criados no Postgres local podem ser exportados de volta (script reverso fica como exercício; só você fica sabendo o que rolou no Postgres novo).
+Reverter o deploy financeiro: sem `VITE_LOCAL_DB_URL` o modulo financeiro mostra estado vazio / mensagem de configuracao (nao ha leitura de financeiro no Supabase). Dados ficam apenas no Postgres onde o PostgREST aponta.
 
 ## Backup do banco financeiro
 

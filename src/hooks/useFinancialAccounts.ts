@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { FinancialAccount, FinancialAccountFormData, FinancialAccountType } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
+import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
 
 // Buscar todas as contas financeiras
 export function useFinancialAccounts() {
@@ -16,9 +17,9 @@ export function useFinancialAccounts() {
         `)
         .order('name');
 
-      if (error) throw error;
-      
-      return data.map(item => ({
+      if (error) return handleFinanceQueryError(error, [] as FinancialAccount[]);
+
+      return (data || []).map(item => ({
         ...item,
         account_category: item.account_categories,
       })) as FinancialAccount[];
@@ -37,8 +38,8 @@ export function useFinancialAccountsByType(type: FinancialAccountType) {
         .eq('type', type)
         .order('name');
 
-      if (error) throw error;
-      return data as FinancialAccount[];
+      if (error) return handleFinanceQueryError(error, [] as FinancialAccount[]);
+      return (data || []) as FinancialAccount[];
     },
   });
 }
@@ -69,8 +70,8 @@ export function useCreateFinancialAccount() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Conta financeira criada!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao criar conta financeira', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao criar conta financeira', error);
     },
   });
 }
@@ -96,8 +97,8 @@ export function useUpdateFinancialAccount() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Conta atualizada!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao atualizar conta', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao atualizar conta', error);
     },
   });
 }
@@ -120,8 +121,8 @@ export function useDeleteFinancialAccount() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Conta excluída!' });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao excluir conta', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao excluir conta', error);
     },
   });
 }
@@ -170,8 +171,8 @@ export function useRecalculateBalance() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
     },
-    onError: (error) => {
-      toast({ title: 'Erro ao recalcular saldo', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao recalcular saldo', error);
     },
   });
 }

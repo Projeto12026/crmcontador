@@ -5,7 +5,12 @@ import type { Database } from './types';
 // Suporta variáveis em runtime (EasyPanel), build time (Vite) ou fallback fixo
 declare global {
   interface Window {
-    __ENV__?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string };
+    __ENV__?: {
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+      VITE_LOCAL_DB_URL?: string;
+      VITE_LOCAL_DB_ANON_KEY?: string;
+    };
   }
 }
 const DEFAULT_SUPABASE_URL = 'https://rvekakbpmkemgiwkkdok.supabase.co';

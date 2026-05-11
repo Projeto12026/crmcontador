@@ -2,13 +2,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { CashFlowTransaction, CreditCardInvoice } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
+import { isFinanceDataUnavailableError, financeMutationToast, handleFinanceQueryError } from '@/lib/postgrest-errors';
+
+type InvoicesPayload = { rows: CreditCardInvoice[]; schemaMissing: boolean };
 
 // Lista faturas de um cartao (ordenadas por periodo desc)
 export function useCreditCardInvoices(cardId: string | null | undefined) {
-  return useQuery({
+  const q = useQuery({
     queryKey: ['credit_card_invoices', cardId],
-    queryFn: async () => {
-      if (!cardId) return [] as CreditCardInvoice[];
+    queryFn: async (): Promise<InvoicesPayload> => {
+      if (!cardId) return { rows: [], schemaMissing: false };
       const { data, error } = await supabase
         .from('credit_card_invoices')
         .select('*')
@@ -16,11 +19,22 @@ export function useCreditCardInvoices(cardId: string | null | undefined) {
         .order('period_year', { ascending: false })
         .order('period_month', { ascending: false });
 
-      if (error) throw error;
-      return (data || []) as CreditCardInvoice[];
+      if (error) {
+        if (isFinanceDataUnavailableError(error)) {
+          return { rows: [], schemaMissing: true };
+        }
+        throw error;
+      }
+      return { rows: (data || []) as CreditCardInvoice[], schemaMissing: false };
     },
     enabled: !!cardId,
   });
+
+  return {
+    ...q,
+    data: q.data?.rows,
+    schemaMissing: q.isSuccess ? Boolean(q.data?.schemaMissing) : false,
+  };
 }
 
 // Lista transacoes ligadas a uma fatura
@@ -39,7 +53,7 @@ export function useInvoiceTransactions(invoiceId: string | null | undefined) {
         .eq('credit_invoice_id', invoiceId)
         .order('date', { ascending: true });
 
-      if (error) throw error;
+      if (error) return handleFinanceQueryError(error, [] as CashFlowTransaction[]);
 
       return (data || []).map((row) => ({
         ...row,
@@ -131,8 +145,8 @@ export function usePayCreditCardInvoice() {
       queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       toast({ title: 'Fatura paga!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao pagar fatura', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao pagar fatura', error);
     },
   });
 }
@@ -169,8 +183,8 @@ export function useReopenCreditCardInvoice() {
       queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
       toast({ title: 'Fatura reaberta!' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Erro ao reabrir fatura', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      financeMutationToast(toast, 'Erro ao reabrir fatura', error);
     },
   });
 }
