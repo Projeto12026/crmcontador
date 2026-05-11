@@ -4,14 +4,14 @@
 
 /** Texto para UI/toasts (Postgres local obrigatorio para dados financeiros). */
 export const FINANCE_DB_USER_HINT =
-  'Configure VITE_LOCAL_DB_URL e VITE_LOCAL_DB_ANON_KEY (URL publica do PostgREST + JWT anon com role anon). Os dados financeiros ficam no Postgres local, nao no projeto Supabase. Veja finance-db/README.md.';
+  'Configure URL publica do PostgREST e JWT anon (role anon) no servico Docker do CRM em execucao. Nomes aceitos: VITE_LOCAL_DB_URL + VITE_LOCAL_DB_ANON_KEY, ou FINANCE_POSTGREST_URL + FINANCE_POSTGREST_ANON_KEY, ou LOCAL_DB_URL + LOCAL_DB_ANON_KEY. No EasyPanel use Environment do container rodando (nao so Build Arguments). Veja finance-db/README.md.';
 
 /**
  * Quando o PostgREST ja responde mas falta DDL (tabelas credit_* etc.) no **mesmo** Postgres por tras dele.
  * Ter `credit_cards` so no projeto Supabase nao ajuda: este modulo nao usa o REST do Supabase.
  */
 export const FINANCE_DB_LOCAL_SCHEMA_HINT =
-  'No Postgres conectado ao seu PostgREST (VITE_LOCAL_DB_URL) faltam as tabelas de cartao ou o schema nao foi recarregado. Aplique finance-db/bootstrap.sql nesse banco e reinicie o PostgREST (ou NOTIFY pgrst). Conferir tabelas no painel Supabase nao substitui isso: o app le cartoes apenas pelo banco local.';
+  'No Postgres conectado ao seu PostgREST financeiro faltam as tabelas de cartao ou o schema nao foi recarregado. Aplique finance-db/bootstrap.sql nesse banco e reinicie o PostgREST (ou NOTIFY pgrst). Conferir tabelas no painel Supabase nao substitui isso: o app le cartoes apenas pelo banco local.';
 
 /** Alias para codigo legado / cartoes. */
 export const CREDIT_FINANCE_SCHEMA_HINT = FINANCE_DB_USER_HINT;

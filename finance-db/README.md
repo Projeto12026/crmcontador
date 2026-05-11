@@ -170,13 +170,23 @@ Confira os logs do container ao subir: o `docker-entrypoint.sh` imprime um **AVI
 
 O **código novo** não mostra dados se o browser / PostgREST não estiverem alinhados com o passo acima.
 
-1. **Variáveis no serviço certo** — Em EasyPanel, abra o **app do CRM (Dockerfile / nginx)** onde roda o `docker-entrypoint.sh`. Lá deve existir **exatamente**:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-   - `VITE_LOCAL_DB_URL` — URL **pública** do PostgREST (a mesma que você abre no navegador, ex.: `https://finance.seudominio.com.br`), **sem** `/rest/v1` no final (o cliente adiciona).
-   - `VITE_LOCAL_DB_ANON_KEY` — JWT anon gerado como no bloco abaixo.
+1. **Variáveis no serviço certo** — Em EasyPanel, abra o **app do CRM (Dockerfile / nginx)** onde roda o `docker-entrypoint.sh`. Use **Environment / variáveis de ambiente do container em execução**, não só **Build arguments** (no estágio final do Docker só o `entrypoint` vê o runtime).
 
-   Se alguma estiver só no projeto do Postgres ou do PostgREST, **o frontend não vê** → módulo financeiro fica vazio ou mostra “Banco sem tabelas de cartão”.
+   Pares aceitos (o `docker-entrypoint.sh` normaliza tudo para `config.js`):
+
+   - `VITE_LOCAL_DB_URL` + `VITE_LOCAL_DB_ANON_KEY`, ou
+   - `FINANCE_POSTGREST_URL` + `FINANCE_POSTGREST_ANON_KEY`, ou
+   - `LOCAL_DB_URL` + `LOCAL_DB_ANON_KEY`, ou
+   - `POSTGREST_URL` + `POSTGREST_ANON_KEY`
+
+   Opcional no mesmo serviço: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (senão o front pode usar os defaults embutidos no código).
+
+   - URL: pública do PostgREST (ex.: `https://finance.seudominio.com.br`), **sem** `/rest/v1` no final.
+   - Chave: JWT `anon` (veja bloco abaixo).
+
+   Variáveis definidas **apenas** no stack do Postgres/PostgREST **não** chegam ao browser; o `config.js` é gerado só no container do CRM.
+
+   Se alguma estiver só no projeto do Postgres ou do PostgREST, **o frontend não vê** → módulo financeiro fica vazio ou mostra alerta de configuração / schema.
 
 2. **Conferir `config.js` ao vivo** — Com o app no ar, abra em nova aba:
    `https://crm.seudominio.com.br/config.js`  

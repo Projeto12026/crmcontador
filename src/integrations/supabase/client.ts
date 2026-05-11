@@ -10,6 +10,13 @@ declare global {
       VITE_SUPABASE_PUBLISHABLE_KEY?: string;
       VITE_LOCAL_DB_URL?: string;
       VITE_LOCAL_DB_ANON_KEY?: string;
+      /** Sinônimos opcionais (config manual / outro gerador de config.js) */
+      FINANCE_POSTGREST_URL?: string;
+      FINANCE_POSTGREST_ANON_KEY?: string;
+      LOCAL_DB_URL?: string;
+      LOCAL_DB_ANON_KEY?: string;
+      POSTGREST_URL?: string;
+      POSTGREST_ANON_KEY?: string;
     };
   }
 }

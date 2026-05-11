@@ -15,22 +15,34 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { LocalDatabase } from './types';
 
-function readLocalDbUrl(): string {
-  if (typeof window !== 'undefined' && window.__ENV__?.VITE_LOCAL_DB_URL) {
-    const v = String(window.__ENV__.VITE_LOCAL_DB_URL).trim();
-    if (v) return v;
+function firstNonEmpty(...candidates: (string | undefined)[]): string {
+  for (const c of candidates) {
+    const t = (c ?? '').trim();
+    if (t) return t;
   }
-  const fromVite = import.meta.env.VITE_LOCAL_DB_URL;
-  return (typeof fromVite === 'string' ? fromVite : '').trim();
+  return '';
+}
+
+function readLocalDbUrl(): string {
+  const w = typeof window !== 'undefined' ? window.__ENV__ : undefined;
+  return firstNonEmpty(
+    w?.VITE_LOCAL_DB_URL,
+    w?.FINANCE_POSTGREST_URL,
+    w?.LOCAL_DB_URL,
+    w?.POSTGREST_URL,
+    import.meta.env.VITE_LOCAL_DB_URL as string | undefined,
+  );
 }
 
 function readLocalDbAnonKey(): string {
-  if (typeof window !== 'undefined' && window.__ENV__?.VITE_LOCAL_DB_ANON_KEY) {
-    const v = String(window.__ENV__.VITE_LOCAL_DB_ANON_KEY).trim();
-    if (v) return v;
-  }
-  const fromVite = import.meta.env.VITE_LOCAL_DB_ANON_KEY;
-  return (typeof fromVite === 'string' ? fromVite : '').trim();
+  const w = typeof window !== 'undefined' ? window.__ENV__ : undefined;
+  return firstNonEmpty(
+    w?.VITE_LOCAL_DB_ANON_KEY,
+    w?.FINANCE_POSTGREST_ANON_KEY,
+    w?.LOCAL_DB_ANON_KEY,
+    w?.POSTGREST_ANON_KEY,
+    import.meta.env.VITE_LOCAL_DB_ANON_KEY as string | undefined,
+  );
 }
 
 const DISABLED_FINANCE_URL = 'https://local-finance.invalid';
