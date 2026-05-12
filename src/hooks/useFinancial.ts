@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { FinancialTransaction, FinancialCategory, TransactionFormData, FinancialStatus, TransactionType } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
-import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
 
 export function useTransactions(filters?: { 
   status?: FinancialStatus; 
@@ -15,7 +14,7 @@ export function useTransactions(filters?: {
     queryFn: async () => {
       let query = supabase
         .from('financial_transactions')
-        .select('*, financial_categories(id, name, color)')
+        .select('*, clients(id, name), financial_categories(id, name, color)')
         .order('due_date', { ascending: false });
       
       if (filters?.status) {
@@ -32,11 +31,11 @@ export function useTransactions(filters?: {
       }
       
       const { data, error } = await query;
-      if (error) return handleFinanceQueryError(error, [] as FinancialTransaction[]);
-
-      return (data || []).map(item => ({
+      if (error) throw error;
+      
+      return data.map(item => ({
         ...item,
-        client: (item as { clients?: unknown }).clients ?? null,
+        client: item.clients,
         category: item.financial_categories,
       })) as FinancialTransaction[];
     },
@@ -58,8 +57,8 @@ export function useCategories(type?: TransactionType) {
       }
       
       const { data, error } = await query;
-      if (error) return handleFinanceQueryError(error, [] as FinancialCategory[]);
-      return (data || []) as FinancialCategory[];
+      if (error) throw error;
+      return data as FinancialCategory[];
     },
   });
 }
@@ -83,8 +82,8 @@ export function useCreateTransaction() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast({ title: 'Transação criada com sucesso!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao criar transacao', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao criar transação', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -112,8 +111,8 @@ export function useUpdateTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao atualizar transacao', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao atualizar transação', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -138,8 +137,8 @@ export function useMarkAsPaid() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast({ title: 'Pagamento registrado!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao registrar pagamento', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao registrar pagamento', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -161,8 +160,8 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast({ title: 'Transação excluída!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao excluir transacao', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao excluir transação', description: error.message, variant: 'destructive' });
     },
   });
 }

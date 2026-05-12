@@ -52,96 +52,63 @@ export type Database = {
       cash_flow_transactions: {
         Row: {
           account_id: string
-          classification: string | null
           client_id: string | null
           contract_id: string | null
           created_at: string
-          credit_card_id: string | null
-          credit_invoice_id: string | null
           date: string
           description: string
-          due_date: string | null
           expense: number | null
           financial_account_id: string | null
           future_expense: number | null
           future_income: number | null
           id: string
           income: number | null
-          installment_group_id: string | null
-          installment_number: number | null
-          installment_total: number | null
           notes: string | null
           origin_destination: string
           paid_by_company: boolean
-          paid_date: string | null
-          payment_method: string | null
-          recurrence_type: string | null
           source: string
-          status: string
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           value: number
         }
         Insert: {
           account_id: string
-          classification?: string | null
           client_id?: string | null
           contract_id?: string | null
           created_at?: string
-          credit_card_id?: string | null
-          credit_invoice_id?: string | null
           date: string
           description: string
-          due_date?: string | null
           expense?: number | null
           financial_account_id?: string | null
           future_expense?: number | null
           future_income?: number | null
           id?: string
           income?: number | null
-          installment_group_id?: string | null
-          installment_number?: number | null
-          installment_total?: number | null
           notes?: string | null
           origin_destination: string
           paid_by_company?: boolean
-          paid_date?: string | null
-          payment_method?: string | null
-          recurrence_type?: string | null
           source?: string
-          status?: string
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           value: number
         }
         Update: {
           account_id?: string
-          classification?: string | null
           client_id?: string | null
           contract_id?: string | null
           created_at?: string
-          credit_card_id?: string | null
-          credit_invoice_id?: string | null
           date?: string
           description?: string
-          due_date?: string | null
           expense?: number | null
           financial_account_id?: string | null
           future_expense?: number | null
           future_income?: number | null
           id?: string
           income?: number | null
-          installment_group_id?: string | null
-          installment_number?: number | null
-          installment_total?: number | null
           notes?: string | null
           origin_destination?: string
           paid_by_company?: boolean
-          paid_date?: string | null
-          payment_method?: string | null
-          recurrence_type?: string | null
           source?: string
-          status?: string
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           value?: number
@@ -173,127 +140,6 @@ export type Database = {
             columns: ["financial_account_id"]
             isOneToOne: false
             referencedRelation: "financial_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cft_credit_card_fk"
-            columns: ["credit_card_id"]
-            isOneToOne: false
-            referencedRelation: "credit_cards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "cft_credit_invoice_fk"
-            columns: ["credit_invoice_id"]
-            isOneToOne: false
-            referencedRelation: "credit_card_invoices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      credit_cards: {
-        Row: {
-          brand: string | null
-          closing_day: number
-          color: string | null
-          created_at: string
-          credit_limit: number
-          due_day: number
-          financial_account_id: string
-          icon: string | null
-          id: string
-          updated_at: string
-        }
-        Insert: {
-          brand?: string | null
-          closing_day: number
-          color?: string | null
-          created_at?: string
-          credit_limit?: number
-          due_day: number
-          financial_account_id: string
-          icon?: string | null
-          id?: string
-          updated_at?: string
-        }
-        Update: {
-          brand?: string | null
-          closing_day?: number
-          color?: string | null
-          created_at?: string
-          credit_limit?: number
-          due_day?: number
-          financial_account_id?: string
-          icon?: string | null
-          id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "credit_cards_financial_account_id_fkey"
-            columns: ["financial_account_id"]
-            isOneToOne: true
-            referencedRelation: "financial_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      credit_card_invoices: {
-        Row: {
-          closing_date: string
-          created_at: string
-          credit_card_id: string
-          due_date: string
-          id: string
-          paid_date: string | null
-          payment_transaction_id: string | null
-          period_month: number
-          period_year: number
-          status: Database["public"]["Enums"]["invoice_status"]
-          total_value: number
-          updated_at: string
-        }
-        Insert: {
-          closing_date: string
-          created_at?: string
-          credit_card_id: string
-          due_date: string
-          id?: string
-          paid_date?: string | null
-          payment_transaction_id?: string | null
-          period_month: number
-          period_year: number
-          status?: Database["public"]["Enums"]["invoice_status"]
-          total_value?: number
-          updated_at?: string
-        }
-        Update: {
-          closing_date?: string
-          created_at?: string
-          credit_card_id?: string
-          due_date?: string
-          id?: string
-          paid_date?: string | null
-          payment_transaction_id?: string | null
-          period_month?: number
-          period_year?: number
-          status?: Database["public"]["Enums"]["invoice_status"]
-          total_value?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "credit_card_invoices_credit_card_id_fkey"
-            columns: ["credit_card_id"]
-            isOneToOne: false
-            referencedRelation: "credit_cards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "credit_invoices_payment_tx_fk"
-            columns: ["payment_transaction_id"]
-            isOneToOne: false
-            referencedRelation: "cash_flow_transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -1839,7 +1685,6 @@ export type Database = {
         | "expired"
       financial_account_type: "bank" | "cash" | "credit"
       financial_status: "pending" | "paid" | "overdue" | "cancelled"
-      invoice_status: "aberta" | "fechada" | "paga" | "atrasada"
       forma_envio: "EMAIL" | "WHATSAPP"
       lead_status:
         | "prospecting"
@@ -2003,7 +1848,6 @@ export const Constants = {
       contract_status: ["draft", "active", "suspended", "cancelled", "expired"],
       financial_account_type: ["bank", "cash", "credit"],
       financial_status: ["pending", "paid", "overdue", "cancelled"],
-      invoice_status: ["aberta", "fechada", "paga", "atrasada"],
       forma_envio: ["EMAIL", "WHATSAPP"],
       lead_status: [
         "prospecting",

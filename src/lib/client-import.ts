@@ -247,7 +247,7 @@ export function parseClientsImportFile(buffer: ArrayBuffer): {
         return;
       }
       touchedOptional.add(field);
-      (payload as unknown as Record<string, unknown>)[field] = raw;
+      (payload as Record<string, unknown>)[field] = raw;
     };
 
     colIndexByField.forEach((col, field) => {

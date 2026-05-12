@@ -5,19 +5,7 @@ import type { Database } from './types';
 // Suporta variáveis em runtime (EasyPanel), build time (Vite) ou fallback fixo
 declare global {
   interface Window {
-    __ENV__?: {
-      VITE_SUPABASE_URL?: string;
-      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-      VITE_LOCAL_DB_URL?: string;
-      VITE_LOCAL_DB_ANON_KEY?: string;
-      /** Sinônimos opcionais (config manual / outro gerador de config.js) */
-      FINANCE_POSTGREST_URL?: string;
-      FINANCE_POSTGREST_ANON_KEY?: string;
-      LOCAL_DB_URL?: string;
-      LOCAL_DB_ANON_KEY?: string;
-      POSTGREST_URL?: string;
-      POSTGREST_ANON_KEY?: string;
-    };
+    __ENV__?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string };
   }
 }
 const DEFAULT_SUPABASE_URL = 'https://rvekakbpmkemgiwkkdok.supabase.co';

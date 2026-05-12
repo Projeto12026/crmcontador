@@ -1,14 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  CashFlowTransaction,
-  CashFlowTransactionFormData,
-  TransactionType,
-  AccountCategory,
-  FinancialAccount,
-  PaymentMethod,
-  Classification,
-  RecurrenceType,
-} from '@/types/crm';
+import { CashFlowTransaction, CashFlowTransactionFormData, TransactionType, AccountCategory, FinancialAccount } from '@/types/crm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +8,6 @@ import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -30,13 +20,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Client } from '@/types/crm';
-import { useCreditCards } from '@/hooks/useCreditCards';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
-import { FINANCE_DB_USER_HINT } from '@/lib/postgrest-errors';
-
-/** Radix Select nao permite SelectItem com value="". */
-const NO_CREDIT_CARD_ITEMS_VALUE = '__no_credit_cards__';
 
 interface TransactionFormDialogProps {
   open: boolean;
@@ -61,24 +44,19 @@ export function TransactionFormDialog({
   clients = [],
   editingTransaction,
 }: TransactionFormDialogProps) {
-  const getInitialFormData = (): CashFlowTransactionFormData => {
-    const today = new Date().toISOString().split('T')[0];
-    return {
-      date: today,
-      due_date: today,
-      account_id: '',
-      description: '',
-      value: 0,
-      origin_destination: '',
-      type,
-      is_future: true,
-      is_installment: false,
-      installment_count: 2,
-    };
-  };
+  const getInitialFormData = (): CashFlowTransactionFormData => ({
+    date: new Date().toISOString().split('T')[0],
+    account_id: '',
+    description: '',
+    value: 0,
+    origin_destination: '',
+    type,
+    is_future: false,
+    is_installment: false,
+    installment_count: 2,
+  });
 
   const [formData, setFormData] = useState<CashFlowTransactionFormData>(getInitialFormData());
-  const { data: creditCards, schemaMissing: creditSchemaMissing } = useCreditCards();
 
   const selectedFinancialAccountName =
     financialAccounts.find((acc) => acc.id === formData.financial_account_id)?.name || '';
@@ -86,31 +64,22 @@ export function TransactionFormDialog({
   // Preencher formulário quando estiver editando
   useEffect(() => {
     if (editingTransaction) {
-      const futureValue = editingTransaction.type === 'income'
-        ? (editingTransaction.future_income || 0)
+      const futureValue = editingTransaction.type === 'income' 
+        ? (editingTransaction.future_income || 0) 
         : (editingTransaction.future_expense || 0);
       const isFuture = futureValue > 0;
-
-      const instTotal = editingTransaction.installment_total ?? 0;
+      
       setFormData({
         date: editingTransaction.date.split('T')[0],
-        due_date: (editingTransaction.due_date || editingTransaction.date).slice(0, 10),
-        paid_date: editingTransaction.paid_date || undefined,
         account_id: editingTransaction.account_id,
         description: editingTransaction.description,
         value: editingTransaction.value,
         origin_destination: editingTransaction.origin_destination,
         type: editingTransaction.type,
         is_future: isFuture,
-        is_installment: instTotal > 1,
-        installment_count: instTotal > 1 ? instTotal : 2,
         financial_account_id: editingTransaction.financial_account_id || undefined,
         client_id: editingTransaction.client_id || undefined,
         notes: editingTransaction.notes || undefined,
-        payment_method: editingTransaction.payment_method ?? undefined,
-        classification: editingTransaction.classification ?? undefined,
-        recurrence_type: editingTransaction.recurrence_type ?? undefined,
-        credit_card_id: editingTransaction.credit_card_id ?? undefined,
       });
     } else {
       setFormData(getInitialFormData());
@@ -144,19 +113,16 @@ export function TransactionFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {editingTransaction
-              ? 'Editar Lançamento'
+            {editingTransaction 
+              ? 'Editar Lançamento' 
               : (type === 'income' ? 'Nova Receita' : 'Nova Despesa')}
           </DialogTitle>
-          <DialogDescription className="sr-only">
-            Preencha os dados do lançamento do fluxo de caixa e confirme para salvar.
-          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="date">Data *</Label>
               <Input
@@ -167,18 +133,8 @@ export function TransactionFormDialog({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="due_date">Vencimento *</Label>
-              <Input
-                id="due_date"
-                type="date"
-                value={formData.due_date || formData.date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="value">Valor *</Label>
+             <div className="space-y-2">
+              <Label htmlFor="value">Valor da Parcela *</Label>
               <Input
                 id="value"
                 type="number"
@@ -263,160 +219,22 @@ export function TransactionFormDialog({
             </div>
           </div>
           
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
-              <Label>Forma de pagamento</Label>
-              <Select
-                value={formData.payment_method || ''}
-                onValueChange={(v) =>
-                  setFormData({
-                    ...formData,
-                    payment_method: (v || undefined) as PaymentMethod | undefined,
-                    credit_card_id: v === 'credit_card' ? formData.credit_card_id : undefined,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="credit_card">Cartao de Credito</SelectItem>
-                  <SelectItem value="debit">Debito</SelectItem>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="boleto">Boleto</SelectItem>
-                  <SelectItem value="cash">Dinheiro</SelectItem>
-                  <SelectItem value="transfer">Transferencia</SelectItem>
-                  <SelectItem value="outro">Outro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Classificacao</Label>
-              <Select
-                value={formData.classification || ''}
-                onValueChange={(v) =>
-                  setFormData({
-                    ...formData,
-                    classification: (v || undefined) as Classification | undefined,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="essencial">Essencial</SelectItem>
-                  <SelectItem value="obrigatoria">Obrigatoria</SelectItem>
-                  <SelectItem value="poderia_esperar">Poderia esperar</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Recorrencia</Label>
-              <Select
-                value={formData.recurrence_type || ''}
-                onValueChange={(v) =>
-                  setFormData({
-                    ...formData,
-                    recurrence_type: (v || undefined) as RecurrenceType | undefined,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixa">Fixa</SelectItem>
-                  <SelectItem value="variavel">Variavel</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {formData.payment_method === 'credit_card' && (
-            <div className="space-y-2">
-              <Label>Cartao de Credito *</Label>
-              {creditSchemaMissing && (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Tabelas de cartao nao encontradas</AlertTitle>
-                  <AlertDescription>{FINANCE_DB_USER_HINT}</AlertDescription>
-                </Alert>
-              )}
-              <Select
-                value={formData.credit_card_id || ''}
-                onValueChange={(v) => {
-                  if (v === NO_CREDIT_CARD_ITEMS_VALUE) return;
-                  setFormData({ ...formData, credit_card_id: v || undefined });
-                }}
-                disabled={creditSchemaMissing}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um cartao" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(creditCards || []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.financial_account?.name}
-                      {c.brand ? ` · ${c.brand}` : ''}
-                      {' · '}Fech. {c.closing_day} / Venc. {c.due_day}
-                    </SelectItem>
-                  ))}
-                  {(!creditCards || creditCards.length === 0) && (
-                    <SelectItem value={NO_CREDIT_CARD_ITEMS_VALUE} disabled>
-                      {creditSchemaMissing
-                        ? 'Cadastro de cartoes indisponivel ate aplicar a migracao SQL'
-                        : 'Nenhum cartao cadastrado — crie um na aba "Cartoes"'}
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                A fatura sera calculada automaticamente pelo dia de fechamento do cartao.
-              </p>
-            </div>
-          )}
-
           <div className="space-y-3 py-2 border rounded-lg p-3 bg-muted/30">
             <div className="flex items-center gap-3">
               <Switch
                 id="is_future"
-                checked={formData.is_future ?? true}
-                onCheckedChange={(checked) =>
-                  setFormData({
-                    ...formData,
-                    is_future: checked,
-                    paid_date: checked ? undefined : formData.paid_date,
-                  })
-                }
+                checked={formData.is_future}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_future: checked })}
               />
               <Label htmlFor="is_future" className="cursor-pointer">
-                Em aberto (projetado)
+                Valor projetado (futuro)
               </Label>
-              {!formData.is_future && (
-                <div className="flex items-center gap-2 ml-4">
-                  <Label htmlFor="paid_date" className="text-xs">
-                    Baixado em
-                  </Label>
-                  <Input
-                    id="paid_date"
-                    type="date"
-                    value={formData.paid_date || formData.date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, paid_date: e.target.value })
-                    }
-                    className="h-8"
-                  />
-                </div>
-              )}
             </div>
-
+            
             <div className="flex items-center gap-3">
               <Switch
                 id="is_installment"
-                checked={!!formData.is_installment}
+                checked={formData.is_installment}
                 onCheckedChange={(checked) => setFormData({ ...formData, is_installment: checked })}
                 disabled={!!editingTransaction}
               />
@@ -437,7 +255,7 @@ export function TransactionFormDialog({
                 </div>
               )}
             </div>
-
+            
             {formData.is_installment && formData.value > 0 && (
               <p className="text-sm text-muted-foreground">
                 Valor total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.value * (formData.installment_count || 2))}

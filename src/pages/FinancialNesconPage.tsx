@@ -6,18 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, FileDown, CreditCard, AlarmClock } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, FolderTree, Wallet, Plus, CalendarRange, BarChart3, CalendarClock, Landmark, FileDown } from 'lucide-react';
 import { exportTransactionsPdf, exportProjectionPdf, exportDashboardPdf, exportInstallmentsPdf, exportAccountsPdf } from '@/lib/pdf-export';
 
 import { useAccountCategories, useAccountCategoriesFlat, useCreateAccountCategory, useUpdateAccountCategory, useDeleteAccountCategory } from '@/hooks/useAccountCategories';
 import { useFinancialAccounts } from '@/hooks/useFinancialAccounts';
 import { useCashFlowTransactions, useCashFlowSummary, useCreateCashFlowTransaction, useUpdateCashFlowTransaction, useSettleTransaction, useDeleteCashFlowTransaction, useBulkUpdateCashFlowTransactions, matchesCashFlowFinancialAccountFilter } from '@/hooks/useCashFlow';
 import { useClients } from '@/hooks/useClients';
-import {
-  useNesconActiveContractsWithDocuments,
-  useCoraPaidBoletosInPeriod,
-  nesconContractCnpjsFromContracts,
-} from '@/hooks/useNesconCoraBridge';
+import { useContracts } from '@/hooks/useContracts';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 import { AccountCategoryTree } from '@/components/financial/AccountCategoryTree';
 import { AccountCategoryDialog } from '@/components/financial/AccountCategoryDialog';
@@ -28,11 +26,8 @@ import { CashFlowFilters, CashFlowFiltersValues } from '@/components/financial/C
 import { DashboardFilters, DashboardFilterValues } from '@/components/financial/DashboardFilters';
 import { InstallmentExpensesView } from '@/components/financial/InstallmentExpensesView';
 import { FinancialAccountsManager } from '@/components/financial/FinancialAccountsManager';
-import { CreditCardManager } from '@/components/financial/CreditCardManager';
-import { CreditCardInvoicesView } from '@/components/financial/CreditCardInvoicesView';
-import { DueDateCalendarView } from '@/components/financial/DueDateCalendarView';
 import { BulkEditTransactionsDialog } from '@/components/financial/BulkEditTransactionsDialog';
-import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary, CreditCard as CreditCardType } from '@/types/crm';
+import { TransactionType, AccountCategory, AccountGroupNumber, AccountCategoryFormData, CashFlowTransaction, CashFlowSummary } from '@/types/crm';
 
 import { NesconSummaryCards, NesconDashboardView, NesconProjectionView } from '@/components/financial/NesconCashFlowView';
 
@@ -43,7 +38,6 @@ export function FinancialNesconPage() {
   const [editingTransaction, setEditingTransaction] = useState<CashFlowTransaction | null>(null);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
 
   // Category dialog state
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -73,29 +67,66 @@ export function FinancialNesconPage() {
   const { data: allCategories, isLoading: loadingCategories } = useAccountCategories();
   const { data: allCategoriesFlat } = useAccountCategoriesFlat();
   const { data: financialAccounts } = useFinancialAccounts();
-  const { data: nesconContractsShared } = useNesconActiveContractsWithDocuments();
+  const { data: allContracts } = useContracts();
 
   const nesconContractRevenuePerMonth = useMemo(() => {
-    if (!nesconContractsShared) return 0;
-    return nesconContractsShared.reduce((sum, c) => sum + Number(c.monthly_value || 0), 0);
-  }, [nesconContractsShared]);
+    if (!allContracts) return 0;
+    return allContracts
+      .filter((c: any) => c.status === 'active' && c.manager === 'nescon')
+      .reduce((sum: number, c: any) => sum + (c.monthly_value || 0), 0);
+  }, [allContracts]);
 
-  const contractCnpjs = useMemo(
-    () => nesconContractCnpjsFromContracts(nesconContractsShared),
-    [nesconContractsShared],
-  );
+  // CNPJs from Nescon contracts for Cora matching
+  const { data: nesconContractsWithCnpj } = useQuery({
+    queryKey: ['nescon-page-contracts-cnpj'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('monthly_value, client_id, clients(document)')
+        .eq('manager', 'nescon')
+        .eq('status', 'active');
+      if (error) throw error;
+      return data;
+    },
+  });
 
-  const { data: coraPaidCashFlow } = useCoraPaidBoletosInPeriod(
-    contractCnpjs,
-    filters.startDate,
-    filters.endDate,
-  );
+  const contractCnpjs = useMemo(() => {
+    if (!nesconContractsWithCnpj) return [];
+    return nesconContractsWithCnpj
+      .map((c: any) => c.clients?.document?.replace(/[^\d]/g, ''))
+      .filter(Boolean) as string[];
+  }, [nesconContractsWithCnpj]);
+
+  // Cora boletos paid for cash-flow tab period
+  const { data: coraPaidCashFlow } = useQuery({
+    queryKey: ['nescon-page-cora-paid', contractCnpjs, filters.startDate, filters.endDate],
+    queryFn: async () => {
+      if (contractCnpjs.length === 0) return [];
+      const { data, error } = await supabase
+        .from('cora_boletos')
+        .select('cnpj, total_amount_cents, paid_at, competencia_mes, competencia_ano');
+      if (error) throw error;
+      return (data || []).filter((b: any) => {
+        if (!b.paid_at) return false;
+        const bCnpj = (b.cnpj || '').replace(/[^\d]/g, '');
+        if (!contractCnpjs.includes(bCnpj)) return false;
+        if (filters.startDate && filters.endDate && b.competencia_ano && b.competencia_mes) {
+          const bDate = new Date(b.competencia_ano, b.competencia_mes - 1);
+          const sDate = parseISO(filters.startDate);
+          const eDate = parseISO(filters.endDate);
+          return bDate >= startOfMonth(sDate) && bDate <= endOfMonth(eDate);
+        }
+        return true;
+      });
+    },
+    enabled: contractCnpjs.length > 0,
+  });
 
   const coraExecutedRevenue = useMemo(() => {
     if (!coraPaidCashFlow || coraPaidCashFlow.length === 0) return 0;
     const AJUSTE_RECEITAS = 2800;
     const CORA_THRESHOLD = 14000;
-    const raw = coraPaidCashFlow.reduce((sum, b) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
+    const raw = coraPaidCashFlow.reduce((sum: number, b: any) => sum + (Number(b.total_amount_cents || 0) / 100), 0);
     if (raw > CORA_THRESHOLD) {
       const months = Math.max(1, differenceInMonths(parseISO(filters.endDate), parseISO(filters.startDate)) + 1);
       return raw - (AJUSTE_RECEITAS * months);
@@ -458,7 +489,7 @@ export function FinancialNesconPage() {
 
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+        <TabsList>
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Dashboard
@@ -482,14 +513,6 @@ export function FinancialNesconPage() {
           <TabsTrigger value="financial-accounts" className="gap-2">
             <Landmark className="h-4 w-4" />
             Contas
-          </TabsTrigger>
-          <TabsTrigger value="credit-cards" className="gap-2">
-            <CreditCard className="h-4 w-4" />
-            Cartoes
-          </TabsTrigger>
-          <TabsTrigger value="due-dates" className="gap-2">
-            <AlarmClock className="h-4 w-4" />
-            Vencimentos
           </TabsTrigger>
         </TabsList>
 
@@ -659,21 +682,6 @@ export function FinancialNesconPage() {
 
         <TabsContent value="financial-accounts" className="space-y-6 mt-4">
           <FinancialAccountsManager />
-        </TabsContent>
-
-        <TabsContent value="credit-cards" className="space-y-6 mt-4">
-          <CreditCardManager
-            onSelectCard={setSelectedCard}
-            selectedCardId={selectedCard?.id}
-          />
-          <CreditCardInvoicesView card={selectedCard} source="nescon" />
-        </TabsContent>
-
-        <TabsContent value="due-dates" className="space-y-6 mt-4">
-          <DueDateCalendarView
-            transactions={allTransactions || []}
-            isLoading={loadingAll}
-          />
         </TabsContent>
 
         {/* Transaction dialog */}

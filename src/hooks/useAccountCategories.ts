@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { localDb as supabase } from '@/integrations/local/client';
 import { AccountCategory, AccountCategoryFormData, AccountGroupNumber, FinancialAccount } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
-import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
 
 // Buscar todas as categorias organizadas em árvore
 export function useAccountCategories() {
@@ -18,8 +17,9 @@ export function useAccountCategories() {
         .order('group_number')
         .order('id');
 
-      if (error) return handleFinanceQueryError(error, [] as AccountCategory[]);
+      if (error) throw error;
 
+      // Organizar em árvore hierárquica
       type RawCategory = {
         id: string;
         name: string;
@@ -29,8 +29,8 @@ export function useAccountCategories() {
         updated_at: string;
         financial_accounts: FinancialAccount | FinancialAccount[] | null;
       };
-
-      const categories = (data || []) as RawCategory[];
+      
+      const categories = data as RawCategory[];
       const categoryMap = new Map<string, AccountCategory>();
       const rootCategories: AccountCategory[] = [];
 
@@ -93,8 +93,8 @@ export function useAccountCategoriesByGroup(groupNumber: AccountGroupNumber) {
         .eq('group_number', groupNumber)
         .order('id');
 
-      if (error) return handleFinanceQueryError(error, [] as AccountCategory[]);
-      return (data || []) as AccountCategory[];
+      if (error) throw error;
+      return data as AccountCategory[];
     },
   });
 }
@@ -110,8 +110,8 @@ export function useAccountCategoriesFlat() {
         .order('group_number')
         .order('id');
 
-      if (error) return handleFinanceQueryError(error, [] as AccountCategory[]);
-      return (data || []) as AccountCategory[];
+      if (error) throw error;
+      return data as AccountCategory[];
     },
   });
 }
@@ -159,8 +159,8 @@ export function useCreateAccountCategory() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Conta criada com sucesso!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao criar conta', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao criar conta', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -190,8 +190,8 @@ export function useUpdateAccountCategory() {
       queryClient.invalidateQueries({ queryKey: ['account_categories'] });
       toast({ title: 'Conta atualizada!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao atualizar conta', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao atualizar conta', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -214,8 +214,8 @@ export function useDeleteAccountCategory() {
       queryClient.invalidateQueries({ queryKey: ['account_categories'] });
       toast({ title: 'Conta excluída!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao excluir conta', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao excluir conta', description: error.message, variant: 'destructive' });
     },
   });
 }

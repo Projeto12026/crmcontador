@@ -1,71 +1,51 @@
 /**
- * Cliente exclusivo do modulo financeiro: PostgREST sobre Postgres local (VPS).
+ * Cliente PostgREST para o banco financeiro local (Postgres self-hosted).
  *
- * - Nao encaminha leituras/escritas dessas tabelas para o REST do Supabase.
- * - Sem VITE_LOCAL_DB_URL + VITE_LOCAL_DB_ANON_KEY, as requisicoes retornam erro
- *   sintetico NO_LOCAL_FINANCE_DB (503) — trate com isFinanceDataUnavailableError.
+ * - Se VITE_LOCAL_DB_URL estiver definida, aponta para o PostgREST proprio.
+ * - Se NAO estiver definida, exporta o mesmo `supabase` original (fallback
+ *   transparente — uti durante a transicao para nao quebrar o app).
  *
- * Leitura de URL/chave e lazy (Proxy): assim window.__ENV__ de /config.js esta
- * disponivel antes do primeiro .from(), mesmo com ordem sutil de scripts no HTML.
+ * Quando o usuario estiver logado no Supabase Auth, cada chamada deste cliente
+ * envia automaticamente o access_token do Supabase como Authorization Bearer
+ * (intercepta via customFetch). O PostgREST aceita esse token desde que o
+ * `JWT_SECRET` configurado seja igual ao do Supabase.
  *
- * Autenticacao continua no Supabase Auth: o access_token e enviado em Authorization
- * para o PostgREST aceitar o mesmo JWT (PGRST_JWT_SECRET alinhado ao Supabase).
+ * Para chamadas sem login, o supabase-js usa o apiKey passado como `anonKey`
+ * — que deve ser um JWT estatico assinado com o mesmo JWT_SECRET, payload
+ * `{ role: 'anon' }`.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { LocalDatabase } from './types';
 
-function firstNonEmpty(...candidates: (string | undefined)[]): string {
-  for (const c of candidates) {
-    const t = (c ?? '').trim();
-    if (t) return t;
+declare global {
+  interface Window {
+    __ENV__?: {
+      VITE_SUPABASE_URL?: string;
+      VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+      VITE_LOCAL_DB_URL?: string;
+      VITE_LOCAL_DB_ANON_KEY?: string;
+    };
   }
-  return '';
 }
 
-function readLocalDbUrl(): string {
-  const w = typeof window !== 'undefined' ? window.__ENV__ : undefined;
-  return firstNonEmpty(
-    w?.VITE_LOCAL_DB_URL,
-    w?.FINANCE_POSTGREST_URL,
-    w?.LOCAL_DB_URL,
-    w?.POSTGREST_URL,
-    import.meta.env.VITE_LOCAL_DB_URL as string | undefined,
-  );
-}
+const LOCAL_DB_URL =
+  (typeof window !== 'undefined' && window.__ENV__?.VITE_LOCAL_DB_URL) ||
+  import.meta.env.VITE_LOCAL_DB_URL ||
+  '';
 
-function readLocalDbAnonKey(): string {
-  const w = typeof window !== 'undefined' ? window.__ENV__ : undefined;
-  return firstNonEmpty(
-    w?.VITE_LOCAL_DB_ANON_KEY,
-    w?.FINANCE_POSTGREST_ANON_KEY,
-    w?.LOCAL_DB_ANON_KEY,
-    w?.POSTGREST_ANON_KEY,
-    import.meta.env.VITE_LOCAL_DB_ANON_KEY as string | undefined,
-  );
-}
+const LOCAL_DB_ANON_KEY =
+  (typeof window !== 'undefined' && window.__ENV__?.VITE_LOCAL_DB_ANON_KEY) ||
+  import.meta.env.VITE_LOCAL_DB_ANON_KEY ||
+  '';
 
-const DISABLED_FINANCE_URL = 'https://local-finance.invalid';
+/**
+ * Indica se o backend local esta configurado.
+ * Se false, `localDb` reaproveita o cliente Supabase (fallback).
+ */
+export const LOCAL_DB_ENABLED = Boolean(LOCAL_DB_URL && LOCAL_DB_ANON_KEY);
 
-function makeDisabledFinanceResponse(): Response {
-  return new Response(
-    JSON.stringify({
-      code: 'NO_LOCAL_FINANCE_DB',
-      message:
-        'Defina VITE_LOCAL_DB_URL e VITE_LOCAL_DB_ANON_KEY. Dados financeiros usam somente o Postgres local via PostgREST, nao o REST do Supabase.',
-      details: '',
-      hint: '',
-    }),
-    { status: 503, headers: { 'Content-Type': 'application/json' } },
-  );
-}
-
-/** true se URL + chave anon estao definidas (runtime ou Vite). */
-export function isLocalFinanceDbConfigured(): boolean {
-  return Boolean(readLocalDbUrl() && readLocalDbAnonKey());
-}
-
-function makeLocalClient(url: string, anonKey: string): SupabaseClient<LocalDatabase> {
+function makeLocalClient(): SupabaseClient<LocalDatabase> {
   const customFetch: typeof fetch = async (input, init) => {
     let auth: Record<string, string> = {};
     try {
@@ -75,7 +55,7 @@ function makeLocalClient(url: string, anonKey: string): SupabaseClient<LocalData
         auth = { Authorization: `Bearer ${token}` };
       }
     } catch {
-      // sem sessao: supabase-js usa apiKey como Authorization
+      // sem sessao -> usa apikey anon (Authorization padrao do supabase-js)
     }
 
     const headers = new Headers(init?.headers);
@@ -84,8 +64,9 @@ function makeLocalClient(url: string, anonKey: string): SupabaseClient<LocalData
     return fetch(input, { ...init, headers });
   };
 
-  return createClient<LocalDatabase>(url, anonKey, {
+  return createClient<LocalDatabase>(LOCAL_DB_URL, LOCAL_DB_ANON_KEY, {
     auth: {
+      // Auth fica no Supabase principal — local nao gerencia sessoes
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
@@ -96,45 +77,20 @@ function makeLocalClient(url: string, anonKey: string): SupabaseClient<LocalData
   });
 }
 
-function makeDisabledFinanceClient(): SupabaseClient<LocalDatabase> {
-  const customFetch: typeof fetch = async () => makeDisabledFinanceResponse();
-
-  return createClient<LocalDatabase>(DISABLED_FINANCE_URL, 'local-finance-placeholder', {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: { fetch: customFetch },
-  });
-}
-
-let cachedClient: SupabaseClient<LocalDatabase> | null = null;
-let cacheSig = '';
-
-function getOrCreateLocalClient(): SupabaseClient<LocalDatabase> {
-  const url = readLocalDbUrl();
-  const key = readLocalDbAnonKey();
-  const sig = `${url}\0${key}`;
-  if (cachedClient && cacheSig === sig) {
-    return cachedClient;
-  }
-  cacheSig = sig;
-  cachedClient = url && key ? makeLocalClient(url, key) : makeDisabledFinanceClient();
-  return cachedClient;
-}
-
 /**
- * Use apenas para: account_categories, financial_accounts, cash_flow_transactions,
- * financial_categories, financial_transactions, credit_cards, credit_card_invoices, RPC compute_invoice_for_card.
+ * Cliente do banco financeiro local.
+ * Se LOCAL_DB_ENABLED for false, e o proprio `supabase` (fallback transparente).
+ *
+ * IMPORTANTE: Use APENAS para as 7 tabelas financeiras:
+ *   - account_categories
+ *   - financial_accounts
+ *   - cash_flow_transactions
+ *   - financial_categories
+ *   - financial_transactions
+ *   - credit_cards
+ *   - credit_card_invoices
+ * E para a funcao RPC `compute_invoice_for_card`.
  */
-export const localDb = new Proxy({} as SupabaseClient<LocalDatabase>, {
-  get(_target, prop, receiver) {
-    const client = getOrCreateLocalClient();
-    const value = Reflect.get(client as object, prop, receiver);
-    if (typeof value === 'function') {
-      return value.bind(client);
-    }
-    return value;
-  },
-}) as unknown as SupabaseClient;
+export const localDb: SupabaseClient = LOCAL_DB_ENABLED
+  ? (makeLocalClient() as unknown as SupabaseClient)
+  : (supabase as unknown as SupabaseClient);

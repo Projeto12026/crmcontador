@@ -1,58 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { localDb as supabase } from '@/integrations/local/client';
+import { supabase } from '@/integrations/supabase/client';
 import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
-import { handleFinanceQueryError, financeMutationToast } from '@/lib/postgrest-errors';
-
-/** Persiste baixa no Postgres local: status, paid_date e projeção → realizado (um único caminho para UI sincronizada). */
-async function settleCashFlowTransaction(
-  id: string,
-  options?: { paidDate?: string; requireFuture?: boolean },
-): Promise<void> {
-  const { data: tx, error: fetchError } = await supabase
-    .from('cash_flow_transactions')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (fetchError) throw fetchError;
-
-  const today = options?.paidDate || new Date().toISOString().slice(0, 10);
-  const updateData: Record<string, unknown> = {
-    status: 'baixado',
-    paid_date: today,
-  };
-  const futureIncome = Number(tx.future_income || 0);
-  const futureExpense = Number(tx.future_expense || 0);
-
-  if (options?.requireFuture && futureIncome <= 0 && futureExpense <= 0) {
-    throw new Error('Não há valor futuro para liquidar');
-  }
-
-  if (futureIncome > 0) {
-    const income = Number(tx.income || 0) + futureIncome;
-    updateData.income = income;
-    updateData.future_income = 0;
-    updateData.value = income;
-  }
-  if (futureExpense > 0) {
-    const expense = Number(tx.expense || 0) + futureExpense;
-    updateData.expense = expense;
-    updateData.future_expense = 0;
-    updateData.value = expense;
-  }
-
-  const { error } = await supabase.from('cash_flow_transactions').update(updateData).eq('id', id);
-  if (error) throw error;
-}
-
-function invalidateAfterCashFlowSettle(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
-  queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
-  queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
-  queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
-  queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
-}
 
 /** Filtro por conta financeira: usa `financial_account_id`; se estiver vazio, aceita `origin_destination` igual ao nome da conta (lançamentos antigos). */
 export function matchesCashFlowFinancialAccountFilter(
@@ -87,7 +37,8 @@ export function useCashFlowTransactions(filters?: {
         .select(`
           *,
           account_categories(*),
-          financial_accounts(*)
+          financial_accounts(*),
+          clients(id, name)
         `)
         .order('date', { ascending: false });
 
@@ -108,13 +59,13 @@ export function useCashFlowTransactions(filters?: {
       }
 
       const { data, error } = await query;
-      if (error) return handleFinanceQueryError(error, [] as CashFlowTransaction[]);
+      if (error) throw error;
 
-      return (data || []).map(item => ({
+      return data.map(item => ({
         ...item,
         account: item.account_categories,
         financial_account: item.financial_accounts,
-        client: (item as { clients?: unknown }).clients ?? null,
+        client: item.clients,
       })) as CashFlowTransaction[];
     },
   });
@@ -148,25 +99,13 @@ export function useCashFlowSummary(
 
       const { data: transactions, error } = await query;
 
-      if (error) {
-        return handleFinanceQueryError(error, {
-          totalIncome: 0,
-          totalExpense: 0,
-          balance: 0,
-          projectedIncome: 0,
-          projectedExpense: 0,
-          executedIncome: 0,
-          executedExpense: 0,
-          executedBalance: 0,
-          transactionCount: 0,
-        } as CashFlowSummary);
-      }
+      if (error) throw error;
 
       const nameNorm = financialAccountLabel?.trim().toLowerCase() || null;
 
       // Nescon usa todos os seus grupos; Financeiro exclui grupos > 6 e administrativos (100, 200)
       const filtered = transactions?.filter(t => {
-        const group = (t.account_categories as unknown as { group_number: number })?.group_number;
+        const group = (t.account_categories as { group_number: number })?.group_number;
         if (!group) return false;
         if (source === 'nescon') {
           // segue
@@ -229,12 +168,12 @@ export function useCashFlowByGroup() {
           account_categories!inner(group_number, name)
         `);
 
-      if (error) return handleFinanceQueryError(error, {} as Record<number, { total: number; name: string }>);
+      if (error) throw error;
 
       const groupStats: Record<number, { total: number; name: string }> = {};
 
       data?.forEach(t => {
-        const group = (t.account_categories as unknown as { group_number: number; name: string })?.group_number;
+        const group = (t.account_categories as { group_number: number; name: string })?.group_number;
         if (!group || group > 6) return; // Excluir grupos 7 e 8
 
         if (!groupStats[group]) {
@@ -251,7 +190,7 @@ export function useCashFlowByGroup() {
   });
 }
 
-// Criar lançamento (com suporte a parcelamento + cartao + vencimentos)
+// Criar lançamento (com suporte a parcelamento)
 export function useCreateCashFlowTransaction(source: string = 'financeiro') {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -261,29 +200,17 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
       const installmentCount = data.is_installment ? (data.installment_count || 2) : 1;
       const valuePerInstallment = data.value;
       const baseDate = parseISO(data.date);
-      // `due_date` informado no form ou cai pra `date`
-      const baseDueDate = data.due_date ? parseISO(data.due_date) : baseDate;
-      // Grupo id estavel para o lote (vincula parcelas)
-      const installmentGroupId = installmentCount > 1
-        ? (globalThis.crypto?.randomUUID?.() ?? `grp-${Date.now()}`)
-        : null;
-
-      const transactionsToInsert: Record<string, unknown>[] = [];
+      
+      const transactionsToInsert = [];
 
       for (let i = 0; i < installmentCount; i++) {
         const installmentDate = addMonths(baseDate, i);
-        const installmentDueDate = addMonths(baseDueDate, i);
-        const description = installmentCount > 1
+        const description = installmentCount > 1 
           ? `${data.description} (${i + 1}/${installmentCount})`
           : data.description;
 
-        // Primeira parcela: realizada se nao for future e nao tiver paid_date negado
-        // Demais parcelas: sempre projetadas (future_*)
-        const isProjected = data.is_future || i > 0;
-
-        const row: Record<string, unknown> = {
+        const insertData: Record<string, unknown> = {
           date: format(installmentDate, 'yyyy-MM-dd'),
-          due_date: format(installmentDueDate, 'yyyy-MM-dd'),
           account_id: data.account_id,
           description,
           value: valuePerInstallment,
@@ -295,43 +222,57 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
           notes: data.notes || null,
           paid_by_company: data.paid_by_company || false,
           source,
-          payment_method: data.payment_method || null,
-          classification: data.classification || null,
-          recurrence_type: data.recurrence_type || null,
-          credit_card_id: data.credit_card_id || null,
-          installment_group_id: installmentGroupId,
-          installment_number: installmentCount > 1 ? i + 1 : null,
-          installment_total: installmentCount > 1 ? installmentCount : null,
         };
 
-        // Distribui valor entre future/realizado
-        if (isProjected) {
-          row.future_income = data.type === 'income' ? valuePerInstallment : 0;
-          row.future_expense = data.type === 'expense' ? valuePerInstallment : 0;
-          row.income = 0;
-          row.expense = 0;
-          row.status = 'em_aberto';
-        } else {
-          row.income = data.type === 'income' ? valuePerInstallment : 0;
-          row.expense = data.type === 'expense' ? valuePerInstallment : 0;
-          row.future_income = 0;
-          row.future_expense = 0;
-          row.status = 'baixado';
-          if (data.paid_date) {
-            row.paid_date = data.paid_date;
+        if (data.is_future || i > 0) {
+          if (data.type === 'income') {
+            insertData.future_income = valuePerInstallment;
+            insertData.future_expense = 0;
+            insertData.income = 0;
+            insertData.expense = 0;
           } else {
-            row.paid_date = format(installmentDate, 'yyyy-MM-dd');
+            insertData.future_expense = valuePerInstallment;
+            insertData.future_income = 0;
+            insertData.income = 0;
+            insertData.expense = 0;
+          }
+        } else {
+          if (data.type === 'income') {
+            insertData.income = valuePerInstallment;
+            insertData.expense = 0;
+            insertData.future_income = 0;
+            insertData.future_expense = 0;
+          } else {
+            insertData.expense = valuePerInstallment;
+            insertData.income = 0;
+            insertData.future_income = 0;
+            insertData.future_expense = 0;
           }
         }
 
-        transactionsToInsert.push(row);
+        transactionsToInsert.push({
+          date: insertData.date as string,
+          account_id: insertData.account_id as string,
+          description: insertData.description as string,
+          value: insertData.value as number,
+          origin_destination: insertData.origin_destination as string,
+          type: insertData.type as TransactionType,
+          financial_account_id: insertData.financial_account_id as string | null,
+          client_id: insertData.client_id as string | null,
+          contract_id: insertData.contract_id as string | null,
+          notes: insertData.notes as string | null,
+          paid_by_company: insertData.paid_by_company as boolean,
+          income: insertData.income as number,
+          expense: insertData.expense as number,
+          future_income: insertData.future_income as number,
+          future_expense: insertData.future_expense as number,
+          source: insertData.source as string,
+        });
       }
 
       const { data: result, error } = await supabase
         .from('cash_flow_transactions')
-        // O cast e necessario porque o schema gerado nao reflete imediatamente
-        // os campos novos quando o linter roda sem o regen do supabase types.
-        .insert(transactionsToInsert as never)
+        .insert(transactionsToInsert)
         .select();
 
       if (error) throw error;
@@ -341,55 +282,69 @@ export function useCreateCashFlowTransaction(source: string = 'financeiro') {
       queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
       queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['credit_card_invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['credit_card_usage'] });
       const count = data.length;
-      toast({
-        title: count > 1
-          ? `${count} lançamentos criados!`
-          : 'Lançamento criado!'
+      toast({ 
+        title: count > 1 
+          ? `${count} lançamentos criados!` 
+          : 'Lançamento criado!' 
       });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao criar lancamento', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao criar lançamento', description: error.message, variant: 'destructive' });
     },
   });
 }
 
-// Baixa um lancamento (status -> baixado, paid_date = hoje, income/expense += value pendente)
-export function useSettleByDueDate() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ id, paidDate }: { id: string; paidDate?: string }) => {
-      await settleCashFlowTransaction(id, { paidDate });
-    },
-    onSuccess: () => {
-      invalidateAfterCashFlowSettle(queryClient);
-      toast({ title: 'Lancamento baixado!' });
-    },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao baixar lancamento', error);
-    },
-  });
-}
-
-// Baixa / liquida projeção (mesma persistência que o calendário: status, paid_date, valores)
+// Liquidar valor futuro (projetado → realizado)
 export function useSettleTransaction() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      await settleCashFlowTransaction(id, { requireFuture: true });
+      // Buscar transação atual
+      const { data: tx, error: fetchError } = await supabase
+        .from('cash_flow_transactions')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const updateData: Record<string, unknown> = {};
+      const futureIncome = Number(tx.future_income || 0);
+      const futureExpense = Number(tx.future_expense || 0);
+
+      if (futureIncome > 0) {
+        updateData.income = Number(tx.income || 0) + futureIncome;
+        updateData.future_income = 0;
+        updateData.value = updateData.income;
+      } else if (futureExpense > 0) {
+        updateData.expense = Number(tx.expense || 0) + futureExpense;
+        updateData.future_expense = 0;
+        updateData.value = updateData.expense;
+      } else {
+        throw new Error('Não há valor futuro para liquidar');
+      }
+
+      const { data: result, error } = await supabase
+        .from('cash_flow_transactions')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result as CashFlowTransaction;
     },
     onSuccess: () => {
-      invalidateAfterCashFlowSettle(queryClient);
-      toast({ title: 'Lancamento baixado!' });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash_flow_summary'] });
+      queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
+      toast({ title: 'Valor liquidado!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao baixar lancamento', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao liquidar', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -414,8 +369,8 @@ export function useDeleteCashFlowTransaction() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamento excluído!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao excluir', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -481,8 +436,8 @@ export function useUpdateCashFlowTransaction() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamento atualizado!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro ao atualizar', error);
+    onError: (error) => {
+      toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
     },
   });
 }
@@ -626,8 +581,8 @@ export function useBulkUpdateCashFlowTransactions() {
       queryClient.invalidateQueries({ queryKey: ['financial_accounts'] });
       toast({ title: 'Lançamentos atualizados!' });
     },
-    onError: (error: unknown) => {
-      financeMutationToast(toast, 'Erro na atualizacao em lote', error);
+    onError: (error) => {
+      toast({ title: 'Erro na atualização em lote', description: error.message, variant: 'destructive' });
     },
   });
 }

@@ -289,55 +289,6 @@ export interface FinancialAccount {
   account_category?: AccountCategory | null;
 }
 
-// ----- Cartao de Credito + Vencimentos -----
-export type PaymentMethod = 'credit_card' | 'debit' | 'pix' | 'boleto' | 'cash' | 'transfer' | 'outro';
-export type Classification = 'essencial' | 'poderia_esperar' | 'obrigatoria';
-export type RecurrenceType = 'fixa' | 'variavel';
-export type CashFlowStatus = 'em_aberto' | 'baixado' | 'parcial' | 'atrasado';
-export type InvoiceStatus = 'aberta' | 'fechada' | 'paga' | 'atrasada';
-
-export interface CreditCard {
-  id: string;
-  financial_account_id: string;
-  brand: string | null;
-  credit_limit: number;
-  closing_day: number;
-  due_day: number;
-  color: string | null;
-  icon: string | null;
-  created_at: string;
-  updated_at: string;
-  financial_account?: FinancialAccount | null;
-}
-
-export interface CreditCardFormData {
-  name: string;
-  brand?: string | null;
-  credit_limit: number;
-  closing_day: number;
-  due_day: number;
-  color?: string | null;
-  icon?: string | null;
-  /** Conta financeira tipo "cartão" já cadastrada em Contas — obrigatória ao criar o cartão */
-  financial_account_id?: string | null;
-}
-
-export interface CreditCardInvoice {
-  id: string;
-  credit_card_id: string;
-  period_year: number;
-  period_month: number;
-  closing_date: string;
-  due_date: string;
-  total_value: number;
-  status: InvoiceStatus;
-  paid_date: string | null;
-  payment_transaction_id: string | null;
-  created_at: string;
-  updated_at: string;
-  credit_card?: CreditCard | null;
-}
-
 // Lançamentos do Fluxo de Caixa
 export interface CashFlowTransaction {
   id: string;
@@ -358,20 +309,6 @@ export interface CashFlowTransaction {
   notes: string | null;
   created_at: string;
   updated_at: string;
-  // Vencimento/baixa
-  due_date: string | null;
-  paid_date: string | null;
-  status: CashFlowStatus;
-  payment_method: PaymentMethod | null;
-  classification: Classification | null;
-  recurrence_type: RecurrenceType | null;
-  // Cartao
-  credit_card_id: string | null;
-  credit_invoice_id: string | null;
-  // Parcelas
-  installment_group_id: string | null;
-  installment_number: number | null;
-  installment_total: number | null;
   account?: AccountCategory | null;
   financial_account?: FinancialAccount | null;
   client?: Pick<Client, 'id' | 'name'> | null;
@@ -528,13 +465,6 @@ export interface CashFlowTransactionFormData {
   // Campos para parcelamento
   is_installment?: boolean;
   installment_count?: number;
-  // Cartao / Vencimentos
-  due_date?: string;
-  paid_date?: string;
-  payment_method?: PaymentMethod;
-  classification?: Classification;
-  recurrence_type?: RecurrenceType;
-  credit_card_id?: string;
 }
 
 // Form para Conta do Plano de Contas

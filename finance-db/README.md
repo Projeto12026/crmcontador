@@ -1,8 +1,6 @@
 # Banco Financeiro Local (Postgres + PostgREST no EasyPanel)
 
-O frontend **nao** usa mais o REST do Supabase (`*.supabase.co/rest/v1`) para tabelas financeiras: fluxo de caixa, plano de contas, contas bancarias, transacoes financeiras legado, cartoes e faturas vao **somente** para o PostgREST configurado em `VITE_LOCAL_DB_URL`. O Supabase do projeto continua servindo **autenticacao** e **demais modulos** do CRM.
-
-Este diretório contém tudo para o **Postgres + PostgREST** do modulo financeiro na VPS (EasyPanel).
+Este diretório contém tudo para mover **o módulo financeiro** do Supabase para um Postgres self-hosted na sua VPS Hostinger, mantendo o resto do app (Auth, clients, contracts, tasks, leads, processes, onboarding, gclick, cora, payroll) no Supabase.
 
 ## Arquivos
 
@@ -158,47 +156,6 @@ Esse token é só pra requisições **anônimas** (antes do login). Quando o usu
 
 Faça **redeploy** do app no EasyPanel para as variáveis subirem.
 
-### Por que o CRM funciona mas o Financeiro diz “não configurado”?
-
-No arquivo `src/integrations/supabase/client.ts` existem **URL e anon key padrão** embutidos. Assim o app pode autenticar e usar dados do Supabase **mesmo** quando o EasyPanel não define `VITE_SUPABASE_*`.
-
-O módulo financeiro **não** usa esse fallback: exige `VITE_LOCAL_DB_URL` e `VITE_LOCAL_DB_ANON_KEY` no **mesmo** serviço Docker do front (ou em `.env` local no dev). Se só o Supabase estiver “implícito” e o Postgres local não, aparece exatamente essa mensagem.
-
-Confira os logs do container ao subir: o `docker-entrypoint.sh` imprime um **AVISO** no stderr quando as variáveis locais estão vazias.
-
-### Financeiro vazio depois de “Implantar”?
-
-O **código novo** não mostra dados se o browser / PostgREST não estiverem alinhados com o passo acima.
-
-1. **Variáveis no serviço certo** — Em EasyPanel, abra o **app do CRM (Dockerfile / nginx)** onde roda o `docker-entrypoint.sh`. Use **Environment / variáveis de ambiente do container em execução**, não só **Build arguments** (no estágio final do Docker só o `entrypoint` vê o runtime).
-
-   Pares aceitos (o `docker-entrypoint.sh` normaliza tudo para `config.js`):
-
-   - `VITE_LOCAL_DB_URL` + `VITE_LOCAL_DB_ANON_KEY`, ou
-   - `FINANCE_POSTGREST_URL` + `FINANCE_POSTGREST_ANON_KEY`, ou
-   - `LOCAL_DB_URL` + `LOCAL_DB_ANON_KEY`, ou
-   - `POSTGREST_URL` + `POSTGREST_ANON_KEY`
-
-   Opcional no mesmo serviço: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (senão o front pode usar os defaults embutidos no código).
-
-   - URL: pública do PostgREST (ex.: `https://finance.seudominio.com.br`), **sem** `/rest/v1` no final.
-   - Chave: JWT `anon` (veja bloco abaixo).
-
-   Variáveis definidas **apenas** no stack do Postgres/PostgREST **não** chegam ao browser; o `config.js` é gerado só no container do CRM.
-
-   Se alguma estiver só no projeto do Postgres ou do PostgREST, **o frontend não vê** → módulo financeiro fica vazio ou mostra alerta de configuração / schema.
-
-2. **Conferir `config.js` ao vivo** — Com o app no ar, abra em nova aba:
-   `https://crm.seudominio.com.br/config.js`  
-   Deve aparecer algo como `window.__ENV__ = { ... VITE_LOCAL_DB_URL: "https://...", VITE_LOCAL_DB_ANON_KEY: "eyJ..." }`.  
-   Se vier string vazia `""`, o container subiu **sem** essas env no serviço do front — ajuste no EasyPanel e **Implantar de novo**.
-
-3. **Cache do navegador** — Após corrigir env, faça um hard refresh (Ctrl+F5) ou teste em aba anônima. A imagem Docker deste repositório já evita cache longo de `/config.js` no nginx; builds antigos podiam cachear `config.js` por um ano.
-
-4. **Rede / CORS** — No DevTools → **Network**, as chamadas ao domínio do PostgREST não podem falhar por CORS. Se aparecer erro de CORS, no PostgREST (`postgrest/postgrest`) configure origens permitidas conforme a documentação da versão (ex.: variável de ambiente de CORS) incluindo `https://crm.seudominio.com.br`.
-
-5. **Schema** — Se o PostgREST responder mas faltar coluna (ex. `paid_date`), aplique `repair-cash-flow-columns.sql` no Postgres e reinicie o PostgREST ou `NOTIFY pgrst, 'reload schema';`.
-
 ## Passo 7 — Checagem final
 
 1. Abrir o app, fazer login.
@@ -211,7 +168,7 @@ O **código novo** não mostra dados se o browser / PostgREST não estiverem ali
 
 ## Rollback (se algo der errado)
 
-Reverter o deploy financeiro: sem `VITE_LOCAL_DB_URL` o modulo financeiro mostra estado vazio / mensagem de configuracao (nao ha leitura de financeiro no Supabase). Dados ficam apenas no Postgres onde o PostgREST aponta.
+Reverter o frontend é trivial: remover/zerar `VITE_LOCAL_DB_URL` e redeploy. O código tem fallback: se a URL local estiver vazia, ele continua usando o cliente Supabase. Os lançamentos novos criados no Postgres local podem ser exportados de volta (script reverso fica como exercício; só você fica sabendo o que rolou no Postgres novo).
 
 ## Backup do banco financeiro
 
