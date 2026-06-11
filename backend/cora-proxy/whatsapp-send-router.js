@@ -58,28 +58,37 @@ function other(p) {
 /**
  * Monta contexto a partir do body da requisição + cora_config whatsapp (clone) + env.
  */
+function pickField(bodyVal, storedVal, envVal) {
+  const b = String(bodyVal ?? '').trim();
+  if (b) return b;
+  const s = String(storedVal ?? '').trim();
+  if (s) return s;
+  return String(envVal ?? '').trim();
+}
+
 export function buildWhatsappContext(body = {}) {
   const row = cloneDb.getConfig('whatsapp');
   const v = row?.valor && typeof row.valor === 'object' ? row.valor : {};
 
   const wascript = {
-    apiUrl: String(body.wascriptApiUrl || v.api_url || process.env.WASCRIPT_API_URL || '')
-      .trim()
-      .replace(/\/+$/, ''),
-    token: String(body.wascriptToken || v.token || process.env.WASCRIPT_TOKEN || '').trim(),
+    apiUrl: pickField(body.wascriptApiUrl ?? body.api_url, v.api_url, process.env.WASCRIPT_API_URL).replace(
+      /\/+$/,
+      '',
+    ),
+    token: pickField(body.wascriptToken ?? body.token, v.token, process.env.WASCRIPT_TOKEN),
   };
 
   const waflow = sanitizeWaFlowCreds(
-    body.waflowApiUrl || v.waflow_api_url || process.env.WAFLOW_API_URL,
-    body.waflowApiToken || v.waflow_api_token || process.env.WAFLOW_API_TOKEN,
+    pickField(body.waflowApiUrl ?? body.waflow_api_url, v.waflow_api_url, process.env.WAFLOW_API_URL),
+    pickField(body.waflowApiToken ?? body.waflow_api_token, v.waflow_api_token, process.env.WAFLOW_API_TOKEN),
   );
 
   const providerMode = String(
-    body.whatsappProviderMode || v.provider_mode || process.env.WHATSAPP_PROVIDER_MODE || 'wascript_only'
+    body.whatsappProviderMode ?? body.provider_mode ?? v.provider_mode ?? process.env.WHATSAPP_PROVIDER_MODE ?? 'wascript_only',
   ).trim();
 
   const failoverEnabled = coerceBool(
-    body.whatsappFailoverEnabled ?? v.failover_enabled ?? process.env.WHATSAPP_FAILOVER_ENABLED
+    body.whatsappFailoverEnabled ?? body.failover_enabled ?? v.failover_enabled ?? process.env.WHATSAPP_FAILOVER_ENABLED,
   );
 
   return { wascript, waflow, providerMode, failoverEnabled };

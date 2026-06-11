@@ -886,7 +886,20 @@ function ParametrosTab() {
     return '';
   }, [apiConfig.backend_token_url]);
 
-  const handleTestProvider = async (provider: 'wascript' | 'lionCrm') => {
+  type WhatsappConfigState = typeof whatsappConfig;
+
+  const normalizeWhatsappConfig = (cfg: WhatsappConfigState): WhatsappConfigState => ({
+    ...cfg,
+    api_url: String(cfg.api_url ?? '').trim().replace(/\/+$/, ''),
+    token: String(cfg.token ?? '').trim(),
+    waflow_api_url: String(cfg.waflow_api_url ?? '').trim().replace(/\/+$/, ''),
+    waflow_api_token: String(cfg.waflow_api_token ?? '').trim(),
+  });
+
+  const handleTestProvider = async (
+    provider: 'wascript' | 'lionCrm',
+    cfgOverride?: WhatsappConfigState,
+  ) => {
     if (!backendBaseUrlForParams) {
       toast({
         title: 'URL do Backend não configurada',
@@ -895,13 +908,14 @@ function ParametrosTab() {
       });
       return;
     }
+    const cfg = normalizeWhatsappConfig(cfgOverride ?? whatsappConfig);
     setTesting((s) => ({ ...s, [provider]: true }));
     setTestResult((r) => ({ ...r, [provider]: null }));
     const isWasc = provider === 'wascript';
     const path = isWasc ? '/api/whatsapp/test-wascript' : '/api/whatsapp/test-waflow';
     const body = isWasc
-      ? { wascriptApiUrl: whatsappConfig.api_url, wascriptToken: whatsappConfig.token }
-      : { waflowApiUrl: whatsappConfig.waflow_api_url, waflowApiToken: whatsappConfig.waflow_api_token };
+      ? { wascriptApiUrl: cfg.api_url, wascriptToken: cfg.token }
+      : { waflowApiUrl: cfg.waflow_api_url, waflowApiToken: cfg.waflow_api_token };
     try {
       const resp = await fetch(`${backendBaseUrlForParams}${path}`, {
         method: 'POST',
@@ -965,7 +979,64 @@ function ParametrosTab() {
   }, [configs, configLoaded]);
 
   const saveApiConfig = () => { upsertConfig.mutate({ chave: 'cora_api', valor: apiConfig }); };
-  const saveWhatsappConfig = () => { upsertConfig.mutate({ chave: 'whatsapp', valor: whatsappConfig }); };
+
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+
+  const saveWhatsappConfig = async () => {
+    const normalized = normalizeWhatsappConfig(whatsappConfig);
+    setWhatsappConfig(normalized);
+    setSavingWhatsapp(true);
+    setTestResult({});
+    try {
+      await upsertConfig.mutateAsync({ chave: 'whatsapp', valor: normalized });
+
+      if (backendBaseUrlForParams) {
+        const pushResp = await fetch(`${backendBaseUrlForParams}/api/whatsapp/push-config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_url: normalized.api_url,
+            token: normalized.token,
+            waflow_api_url: normalized.waflow_api_url,
+            waflow_api_token: normalized.waflow_api_token,
+            provider_mode: normalized.provider_mode,
+            failover_enabled: normalized.failover_enabled,
+          }),
+        });
+        const pushData = await pushResp.json().catch(() => ({}));
+        if (!pushResp.ok) {
+          throw new Error(pushData?.error || `Backend não atualizou a config (HTTP ${pushResp.status})`);
+        }
+      } else {
+        toast({
+          title: 'Salvo no CRM',
+          description: 'Configure a URL do Backend em API Cora para sincronizar o cora-proxy antes de testar/enviar.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (normalized.provider_mode === 'waflow_only') {
+        await handleTestProvider('lionCrm', normalized);
+      } else {
+        if (normalized.api_url && normalized.token) {
+          await handleTestProvider('wascript', normalized);
+        }
+        if (
+          normalized.provider_mode !== 'wascript_only' &&
+          normalized.waflow_api_url &&
+          normalized.waflow_api_token
+        ) {
+          await handleTestProvider('lionCrm', normalized);
+        }
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Erro ao salvar configurações WhatsApp';
+      toast({ title: 'Erro ao salvar WhatsApp', description: msg, variant: 'destructive' });
+    } finally {
+      setSavingWhatsapp(false);
+    }
+  };
 
   const handleStartEdit = (template: any) => {
     setEditingTemplate(template.id);
@@ -1260,9 +1331,18 @@ function ParametrosTab() {
                 )}
               </div>
             </div>
-            <Button onClick={saveWhatsappConfig} disabled={upsertConfig.isPending}>
-              Salvar Configurações WhatsApp
+            <Button
+              onClick={() => void saveWhatsappConfig()}
+              disabled={upsertConfig.isPending || savingWhatsapp}
+            >
+              {(upsertConfig.isPending || savingWhatsapp) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Salvar e testar conexão
             </Button>
+            <p className="text-xs text-muted-foreground">
+              Ao salvar, o token é gravado no CRM, replicado no cora-proxy (VPS) e o teste do provedor ativo é executado automaticamente.
+            </p>
           </CardContent>
       </Card>
 

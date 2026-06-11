@@ -234,6 +234,17 @@ export function getConfig(chave) {
   }
 }
 
+/** Grava/atualiza uma chave em cora_config (ex.: whatsapp após salvar no Supabase). */
+export function upsertConfig(chave, valor) {
+  const database = getDb();
+  const now = new Date().toISOString();
+  const json = typeof valor === 'string' ? valor : JSON.stringify(valor || {});
+  database.prepare(`
+    INSERT INTO cora_config (chave, valor, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor, updated_at = excluded.updated_at
+  `).run(chave, json, now);
+}
+
 export function getEnvios() {
   const database = getDb();
   return database.prepare('SELECT empresa_id, competencia_mes, competencia_ano, tipo_envio, sucesso FROM cora_envios').all();

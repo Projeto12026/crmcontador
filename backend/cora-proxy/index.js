@@ -364,10 +364,24 @@ app.post('/api/cora/download-pdf', async (req, res) => {
 
 // ── WhatsApp via Wascript ────────────────────────────
 
-// Erros que indicam falha temporária (sessão/conexão) e vale tentar de novo
+// Erros definitivos — não repetir (token/URL errados)
+function isDefinitiveWascriptHttpStatus(status) {
+  return status === 401 || status === 403 || status === 404;
+}
+
+// Erros temporários (sessão/conexão) — até 3 tentativas
 function isTransientWascriptError(err) {
-  const msg = (err && err.message) ? String(err.message) : '';
-  return /reconecte|token|sessão whatsapp|desconectad|desconhecido/i.test(msg);
+  const status = err?.status;
+  if (typeof status === 'number') {
+    if (isDefinitiveWascriptHttpStatus(status)) return false;
+    if ([500, 501, 502, 503, 504, 429].includes(status)) return true;
+  }
+  const msg = err?.message ? String(err.message) : '';
+  // "token" sozinho não basta — evita retry em "Token inválido" (401)
+  if (/token\s*(inv[aá]lid|incorret|expirad|n[aã]o\s*(encontr|autoriz))/i.test(msg)) return false;
+  return /reconecte|sess[aã]o\s*whatsapp|desconectad|whatsapp\s*n[aã]o\s*aberta|api\s*desconectada|p[aá]gina\s*do\s*whatsapp/i.test(
+    msg
+  );
 }
 
 // Executa uma chamada Wascript com até 3 tentativas quando o erro for de sessão/token
@@ -424,7 +438,13 @@ async function sendWhatsappMessage(phone, message, wascriptConfig) {
     }
     if (!response.ok) {
       const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
-      const er = new Error(errMsg);
+      const er = new Error(
+        response.status === 401
+          ? `Token Wascript inválido (401). Gere um token novo no painel Wascript, salve em Cora → Parâmetros → WhatsApp e confira se a URL base é a mesma conta. Detalhe: ${errMsg}`
+          : response.status === 501
+            ? `WhatsApp desconectado no Wascript (501). Abra o painel Wascript, reconecte o QR Code e aguarde status "conectado" antes de enviar. Detalhe: ${errMsg}`
+            : errMsg
+      );
       er.status = response.status;
       throw er;
     }
@@ -467,7 +487,13 @@ async function sendWhatsappPdf(phone, pdfBuffer, filename, caption, wascriptConf
     }
     if (!response.ok) {
       const errMsg = data.error || data.message || `Wascript HTTP ${response.status}`;
-      const er = new Error(errMsg);
+      const er = new Error(
+        response.status === 401
+          ? `Token Wascript inválido (401). Gere um token novo no painel Wascript, salve em Cora → Parâmetros → WhatsApp e confira se a URL base é a mesma conta. Detalhe: ${errMsg}`
+          : response.status === 501
+            ? `WhatsApp desconectado no Wascript (501). Abra o painel Wascript, reconecte o QR Code e aguarde status "conectado" antes de enviar. Detalhe: ${errMsg}`
+            : errMsg
+      );
       er.status = response.status;
       throw er;
     }
@@ -993,20 +1019,73 @@ app.post('/api/gclick/run-cycle', async (req, res) => {
 //
 // Wascript: faz GET autenticado em /api/listar-etiquetas/{token}.
 // Lion CRM: POST com action incompleta para validar token sem enfileirar mensagem.
+function pickWhatsappField(bodyVal, storedVal, envVal) {
+  const b = String(bodyVal ?? '').trim();
+  if (b) return b;
+  const s = String(storedVal ?? '').trim();
+  if (s) return s;
+  return String(envVal ?? '').trim();
+}
+
+function normalizeWhatsappPayload(body = {}) {
+  const apiUrl = pickWhatsappField(body.wascriptApiUrl ?? body.api_url, null, null).replace(/\/+$/, '');
+  const token = pickWhatsappField(body.wascriptToken ?? body.token, null, null);
+  const waflowApiUrl = pickWhatsappField(body.waflowApiUrl ?? body.waflow_api_url, null, null).replace(/\/+$/, '');
+  const waflowApiToken = pickWhatsappField(body.waflowApiToken ?? body.waflow_api_token, null, null);
+  const providerMode = String(body.whatsappProviderMode ?? body.provider_mode ?? 'wascript_only').trim();
+  const failoverRaw = body.whatsappFailoverEnabled ?? body.failover_enabled;
+  const failoverEnabled =
+    failoverRaw === true ||
+    failoverRaw === 1 ||
+    String(failoverRaw ?? '').trim().toLowerCase() === 'true';
+
+  return {
+    api_url: apiUrl,
+    token,
+    waflow_api_url: waflowApiUrl,
+    waflow_api_token: waflowApiToken,
+    provider_mode: providerMode || 'wascript_only',
+    failover_enabled: failoverEnabled,
+  };
+}
+
 function readWhatsappCreds(body = {}) {
   const row = cloneDb.getConfig('whatsapp');
   const v = (row?.valor && typeof row.valor === 'object') ? row.valor : {};
+  const normalized = normalizeWhatsappPayload(body);
+  const useBody = Boolean(
+    normalized.api_url ||
+      normalized.token ||
+      normalized.waflow_api_url ||
+      normalized.waflow_api_token ||
+      body.whatsappProviderMode ||
+      body.provider_mode
+  );
+  const src = useBody ? normalized : v;
   return {
     wascript: {
-      apiUrl: String(body.wascriptApiUrl || v.api_url || process.env.WASCRIPT_API_URL || '').trim().replace(/\/+$/, ''),
-      token: String(body.wascriptToken || v.token || process.env.WASCRIPT_TOKEN || '').trim(),
+      apiUrl: pickWhatsappField(src.api_url, v.api_url, process.env.WASCRIPT_API_URL).replace(/\/+$/, ''),
+      token: pickWhatsappField(src.token, v.token, process.env.WASCRIPT_TOKEN),
     },
     waflow: {
-      apiUrl: String(body.waflowApiUrl || v.waflow_api_url || process.env.WAFLOW_API_URL || '').trim().replace(/\/+$/, ''),
-      token: String(body.waflowApiToken || v.waflow_api_token || process.env.WAFLOW_API_TOKEN || '').trim(),
+      apiUrl: pickWhatsappField(src.waflow_api_url, v.waflow_api_url, process.env.WAFLOW_API_URL).replace(/\/+$/, ''),
+      token: pickWhatsappField(src.waflow_api_token, v.waflow_api_token, process.env.WAFLOW_API_TOKEN),
     },
   };
 }
+
+// POST /api/whatsapp/push-config — replica whatsapp do Supabase no clone SQLite + limpa cache
+app.post('/api/whatsapp/push-config', async (req, res) => {
+  try {
+    const valor = normalizeWhatsappPayload(req.body || {});
+    cloneDb.upsertConfig('whatsapp', valor);
+    whatsappSendRouter.clearWhatsappProviderCache();
+    res.json({ success: true, message: 'Configuração WhatsApp atualizada no backend.', config: valor });
+  } catch (error) {
+    console.error('Erro push-config whatsapp:', error);
+    res.status(500).json({ success: false, error: error.message || 'Erro ao gravar config no backend.' });
+  }
+});
 
 app.post('/api/whatsapp/test-wascript', async (req, res) => {
   try {
