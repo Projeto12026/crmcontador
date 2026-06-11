@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as crmSupabase } from '@/integrations/supabase/client';
+import { localDb as supabase } from '@/integrations/local/client';
 import { CashFlowTransaction, CashFlowTransactionFormData, CashFlowSummary, AccountGroupNumber, TransactionType, EXCLUDED_ACCOUNT_GROUPS } from '@/types/crm';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths, parseISO } from 'date-fns';
@@ -37,8 +38,7 @@ export function useCashFlowTransactions(filters?: {
         .select(`
           *,
           account_categories(*),
-          financial_accounts(*),
-          clients(id, name)
+          financial_accounts(*)
         `)
         .order('date', { ascending: false });
 
@@ -61,11 +61,27 @@ export function useCashFlowTransactions(filters?: {
       const { data, error } = await query;
       if (error) throw error;
 
+      const clientIds = Array.from(
+        new Set((data || []).map((item) => item.client_id).filter(Boolean)),
+      ) as string[];
+
+      const clientsById = new Map<string, { id: string; name: string }>();
+      if (clientIds.length > 0) {
+        const { data: clients } = await crmSupabase
+          .from('clients')
+          .select('id, name')
+          .in('id', clientIds);
+
+        (clients || []).forEach((client) => {
+          clientsById.set(client.id, client);
+        });
+      }
+
       return data.map(item => ({
         ...item,
         account: item.account_categories,
         financial_account: item.financial_accounts,
-        client: item.clients,
+        client: item.client_id ? clientsById.get(item.client_id) ?? null : null,
       })) as CashFlowTransaction[];
     },
   });
